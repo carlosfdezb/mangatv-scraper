@@ -1,0 +1,168 @@
+/**
+ * MangaTV Scraper - TypeScript scraper for MangaTV (mangatv.net)
+ * @module types/manga
+ */
+
+/**
+ * Represents a manga type from the site
+ */
+export type MangaType = 'Manga' | 'MANHWA' | 'Manhua' | 'One-Shot' | 'Doujinshi' | 'Oel' | 'Novela' | 'ONE SHOT';
+
+/**
+ * Represents a demographic category
+ */
+export type Demographic = 'Seinen' | 'Shoujo' | 'Shounen' | 'Josei' | 'Kodomo';
+
+/**
+ * Represents a genre from the site
+ */
+export type Genre =
+  | 'Accion'
+  | 'Animacion'
+  | 'Artes Marciales'
+  | 'Aventura'
+  | 'Belico'
+  | 'Ciencia Ficcion'
+  | 'Comedia'
+  | 'Demonios'
+  | 'Deportes'
+  | 'Doujinshi'
+  | 'Drama'
+  | 'Ecchi'
+  | 'Escolar'
+  | 'Espacial'
+  | 'Fantasía'
+  | 'Gore'
+  | 'Harem'
+  | 'Historico'
+  | 'Horror'
+  | 'Infantil'
+  | 'Josei'
+  | 'Juegos'
+  | 'Lucha Libre'
+  | 'Magia'
+  | 'Mecha'
+  | 'Militar'
+  | 'Misterio'
+  | 'Musica'
+  | 'Ninos'
+  | 'Novela'
+  | 'Parodia'
+  | 'Policial'
+  | 'Psicologico'
+  | 'Realidad'
+  | 'Romance'
+  | 'Samurai'
+  | 'Seinen'
+  | 'Shoujo'
+  | 'Shounen'
+  | 'Sin Genero'
+  | 'Sobrenatural'
+  | 'Sof武林'
+  | 'Supervivencia'
+  | 'Telenovela'
+  | 'Terror'
+  | 'Thriller'
+  | 'Vampiros'
+  | 'Vida Cotidiana'
+  | 'Yaoi'
+  | 'Yuri';
+
+/**
+ * Represents a chapter of a manga
+ */
+export interface Chapter {
+  /** Unique chapter identifier (numeric) */
+  id: number;
+  /** Chapter number (e.g., "1", "1.5", "Chapter 10") */
+  number: string;
+  /** Chapter title */
+  title: string;
+  /** Publication date string */
+  date: string;
+  /** Full URL to the chapter */
+  url: string;
+}
+
+/**
+ * Represents a manga entry in list views
+ */
+export interface Manga {
+  /** Unique manga identifier (numeric) */
+  id: number;
+  /** URL-friendly slug */
+  slug: string;
+  /** Manga title */
+  title: string;
+  /** Manga type (Manga, Manhwa, Manhua, etc.) */
+  type: MangaType;
+  /** Cover image URL */
+  coverUrl: string;
+  /** Latest update date string */
+  latestUpdate: string;
+  /** Rating from 1-5 stars */
+  rating: number;
+  /** Number of ratings received */
+  ratingCount: number;
+  /** Whether the manga is marked as 18+ (ero) */
+  isEro: boolean;
+  /** Full URL to the manga detail page */
+  url: string;
+}
+
+/**
+ * Represents detailed manga information
+ */
+export interface MangaDetail extends Manga {
+  /** Full manga description/ synopsis */
+  description: string;
+  /** Author name(s) */
+  author: string;
+  /** Artist name(s) */
+  artist: string;
+  /** Publication status */
+  status: string;
+  /** Demographic categories */
+  demographics: Demographic[];
+  /** Genre tags */
+  genres: Genre[];
+  /** List of chapters */
+  chapters: Chapter[];
+}
+
+/**
+ * Sort order options for manga lists
+ */
+export type SortOrder = 'latest' | 'title' | 'titlereverse' | 'popular';
+
+/**
+ * Filters for manga list queries
+ */
+export interface MangaListFilters {
+  /** Filter by genres */
+  genre?: Genre[];
+  /** Filter by manga types */
+  type?: MangaType[];
+  /** Filter by demographic */
+  demographic?: Demographic;
+  /** Sort order */
+  sort?: SortOrder;
+  /** Page number (1-indexed) */
+  page?: number;
+}
+
+/**
+ * Paginated result wrapper
+ */
+export interface PaginatedResult<T> {
+  /** Items on the current page */
+  items: T[];
+  /** Current page number */
+  page: number;
+  /** Total number of pages */
+  totalPages: number;
+  /** Total number of items */
+  totalItems: number;
+  /** Whether there is a next page */
+  hasNextPage: boolean;
+}
