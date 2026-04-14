@@ -4,153 +4,64 @@
  */
 
 import * as cheerio from 'cheerio';
-import type { Manga, MangaListFilters, PaginatedResult, MangaType, Genre } from '../../types/manga.js';
+import type { Manga, MangaListFilters, PaginatedResult, MangaType } from '../../types/manga.js';
 import { BASE_URL, PATHS, SORT_ORDERS } from '../../constants/index.js';
-
-/**
- * Parse a manga type string to MangaType
- */
-function parseMangaType(typeStr: string): MangaType {
-  const normalized = typeStr.trim().toUpperCase().replace(/\s+/g, '-');
-  const typeMap: Record<string, MangaType> = {
-    'MANGA': 'Manga',
-    'MANHWA': 'MANHWA',
-    'MANHUA': 'Manhua',
-    'ONE-SHOT': 'One-Shot',
-    'DOUJINSHI': 'Doujinshi',
-    'OEL': 'Oel',
-    'NOVELA': 'Novela',
-    'ONE SHOT': 'ONE SHOT',
-  };
-  return typeMap[normalized] ?? 'Manga';
-}
-
-/**
- * Check if text indicates 18+ content
- */
-function parseIsEro(text: string): boolean {
-  return text.includes('+') || text.toLowerCase().includes('ero');
-}
-
-/**
- * Parse rating from text
- */
-function parseRating(text: string): number {
-  const match = text.match(/(\d+(?:\.\d+)?)/);
-  return match?.[1] ? parseFloat(match[1]) : 0;
-}
-
-/**
- * Build query string from filters
- */
-export function buildListUrl(filters?: MangaListFilters): string {
-  const params = new URLSearchParams();
-  
-  if (filters?.genre && filters.genre.length > 0) {
-    filters.genre.forEach(g => params.append('g', g));
-  }
-  if (filters?.type && filters.type.length > 0) {
-    filters.type.forEach(t => params.append('type', t));
-  }
-  if (filters?.demographic) {
-    params.set('demographic', filters.demographic);
-  }
-  if (filters?.sort && filters.sort !== SORT_ORDERS.LATEST) {
-    params.set('order', filters.sort);
-  }
-  if (filters?.page && filters.page > 1) {
-    params.set('page', filters.page.toString());
-  }
-
-  const queryString = params.toString();
-  return queryString ? `${PATHS.LIST}?${queryString}` : PATHS.LIST;
-}
+import { extractMangaFromUrl, parseRatingFromRel, normalizeMangaType, parseSiteDate } from '../../utils/helpers.js';
 
 /**
  * Parse manga items from list HTML
+ * @param html - Raw HTML string from list page
+ * @returns Array of parsed Manga objects
  */
 export function parseMangaList(html: string): Manga[] {
   const $ = cheerio.load(html);
   const mangaList: Manga[] = [];
 
-  // Common list container selectors to try
-  const containerSelectors = [
-    '.manga-list',
-    '.list-manga',
-    '.manga-items',
-    '.manga-listado',
-    '[class*="manga-list"]',
-    '[class*="manga-item"]',
-  ];
-
-  let $container: cheerio.Cheerio | null = null;
-  for (const selector of containerSelectors) {
-    if ($(selector).length > 0) {
-      $container = $(selector);
-      break;
-    }
-  }
-
-  if (!$container) {
-    // Try to find manga items directly
-    const itemSelectors = [
-      '.manga-item',
-      '.manga-card',
-      '.list-item',
-      '[class*="manga"]',
-    ];
-
-    for (const selector of itemSelectors) {
-      if ($(selector).length > 0) {
-        $container = $(selector).parent();
-        break;
-      }
-    }
-  }
-
-  if (!$container) {
+  // Main container: .listupd
+  const $container = $('.listupd');
+  
+  if ($container.length === 0) {
     return mangaList;
   }
 
-  $container.find('a').each((_, element) => {
+  // Each manga card: .bs .bsx a
+  $container.find('.bs .bsx a').each((_, element) => {
     const $el = $(element);
-    const href = $el.attr('href') ?? '';
-    
-    // Parse manga ID and slug from URL like /manga/123/slug
-    const match = href.match(/\/manga\/(\d+)\/([^/]+)/);
-    if (!match?.[1]) return;
+    const $bsx = $el; // The anchor is the .bsx element in this structure
 
-    const id = parseInt(match[1], 10);
-    const slug = match[2] ?? '';
-    
-    // Extract title from alt or text
-    const title = $el.find('img').attr('alt') 
-      ?? $el.find('.title').text().trim()
-      ?? $el.text().trim()
-      ?? '';
-    
-    const coverUrl = $el.find('img').attr('src') ?? '';
-    
-    // Extract type
-    const typeText = $el.find('.type, .badge, [class*="type"]').text().trim() || 'Manga';
-    const type = parseMangaType(typeText);
-    
-    // Extract update date
-    const latestUpdate = $el.find('.update, .date, [class*="update"]').text().trim() || '';
-    
-    // Extract rating
-    const ratingText = $el.find('.rating, [class*="rating"]').text().trim() || '0';
-    const rating = parseRating(ratingText);
-    
-    // Extract rating count
-    const ratingCountText = $el.find('.votes, [class*="votes"]').text().trim() || '0';
-    const ratingCountMatch = ratingCountText.match(/(\d+)/);
-    const ratingCount = ratingCountMatch ? parseInt(ratingCountMatch[1] ?? '0', 10) : 0;
-    
-    // Check for 18+ marker
-    const isEro = parseIsEro($el.find('.ero, [class*="ero"]').text() || '') 
-      || parseIsEro(typeText);
-    
+    // href -> extract id and slug
+    const href = $bsx.attr('href') ?? '';
+    const extracted = extractMangaFromUrl(href);
+    if (!extracted) return;
+
+    const { id, slug } = extracted;
+
+    // Title from .tt
+    const title = $bsx.find('.tt').text().trim() 
+      || $bsx.find('img').attr('alt')?.trim()
+      || '';
+
+    // Cover from .limit img src
+    const coverUrl = $bsx.find('.limit img').attr('src') ?? '';
+
+    // Type from .limit .type (e.g., "Manga", "MANHWA", "Manhua")
+    const typeText = $bsx.find('.limit .type').text().trim();
+    const type: MangaType = normalizeMangaType(typeText);
+
+    // ERO flag from .limit .hot (contains "+18")
+    const isEro = $bsx.find('.limit .hot').text().includes('+18');
+
+    // Update date from .epxdate
+    const latestUpdateRaw = $bsx.find('.epxdate').text().trim();
+    const latestUpdate = parseSiteDate(latestUpdateRaw);
+
+    // Rating from .star_bar rel attribute JSON: {"numStar":5,"manga_id":36031}
+    const relJson = $bsx.find('.star_bar').attr('rel') ?? '{}';
+    const { rating } = parseRatingFromRel(relJson);
+    // ratingCount is not available in list view, default to 0
+    const ratingCount = 0;
+
+    // Full URL
     const url = href.startsWith('http') ? href : `${BASE_URL}${href}`;
 
     mangaList.push({
@@ -172,48 +83,105 @@ export function parseMangaList(html: string): Manga[] {
 
 /**
  * Parse pagination info from list HTML
+ * @param html - Raw HTML string
+ * @returns Pagination info object
  */
 export function parsePagination(html: string): { page: number; totalPages: number; totalItems: number } {
   const $ = cheerio.load(html);
-  
-  // Try to find pagination info
-  const pageText = $('.pagination .active, .page-current, [class*="active"]').text().trim() || '';
-  const pageMatch = pageText.match(/\d+/);
-  const currentPage = pageMatch ? parseInt(pageMatch[0] ?? '1', 10) : 1;
-  
-  // Try to find total pages
-  const totalPagesText = $('.pagination a:last, .page-total, [class*="total-pages"]').text().trim() || '';
-  const totalPagesMatch = totalPagesText.match(/\d+/g);
-  const lastPageMatch = totalPagesMatch?.[totalPagesMatch.length - 1];
-  const totalPages = lastPageMatch ? parseInt(lastPageMatch, 10) : 1;
-  
-  // Try to find total items
-  const totalItemsText = $('.pagination .total, [class*="total-items"]').text().trim() || '';
-  const totalItemsMatch = totalItemsText.match(/\d+/);
-  const totalItems = totalItemsMatch ? parseInt(totalItemsMatch[0] ?? '0', 10) : 0;
+
+  // Current page: .pagination .current or .page-numbers.current
+  const currentPageText = $('.pagination .current, .page-numbers.current').first().text().trim();
+  const currentPageMatch = currentPageText.match(/\d+/);
+  const currentPage = currentPageMatch ? parseInt(currentPageMatch[0], 10) : 1;
+
+  // Total pages: last .page-numbers that is a number (not "next" or "»")
+  const pageNumbers: string[] = [];
+  $('.pagination .page-numbers, .pagination a.page-numbers').each((_, el) => {
+    const text = $(el).text().trim();
+    if (/^\d+$/.test(text)) {
+      pageNumbers.push(text);
+    }
+  });
+  const lastPageText = pageNumbers[pageNumbers.length - 1];
+  const lastPageNum = lastPageText ? parseInt(lastPageText, 10) : 1;
+  const totalPages = lastPageNum || 1;
+
+  // Total items: not directly available, estimate from items on page
+  // We'll compute this from the manga list in parseMangaListResult
+  const totalItems = 0; // Will be overridden in parseMangaListResult
 
   return { page: currentPage, totalPages, totalItems };
 }
 
 /**
  * Parse full paginated result from list HTML
+ * @param html - Raw HTML string
+ * @param filters - Optional filters used for the query
+ * @returns Paginated result with manga items
  */
 export function parseMangaListResult(html: string, filters?: MangaListFilters): PaginatedResult<Manga> {
   const items = parseMangaList(html);
   const pagination = parsePagination(html);
   const page = filters?.page ?? pagination.page;
 
+  // Estimate total items: items.length * totalPages (approximate)
+  const estimatedTotalItems = items.length * (pagination.totalPages || 1);
+
   return {
     items,
     page,
     totalPages: pagination.totalPages || 1,
-    totalItems: pagination.totalItems || items.length,
+    totalItems: items.length > 0 ? estimatedTotalItems : 0,
     hasNextPage: page < (pagination.totalPages || 1),
   };
 }
 
 /**
+ * Build a manga list URL with optional filters
+ * @param filters - Optional filter criteria
+ * @returns Full list URL with query parameters
+ */
+export function buildListUrl(filters?: MangaListFilters): string {
+  const params = new URLSearchParams();
+
+  // Handle search query (uses 's' parameter)
+  if (filters?.searchQuery) {
+    params.set('s', filters.searchQuery);
+  }
+
+  // Handle genre filters
+  if (filters?.genre && filters.genre.length > 0) {
+    filters.genre.forEach(g => params.append('g', g));
+  }
+
+  // Handle type filters
+  if (filters?.type && filters.type.length > 0) {
+    filters.type.forEach(t => params.append('type', t));
+  }
+
+  // Handle demographic filter
+  if (filters?.demographic) {
+    params.set('demographic', filters.demographic);
+  }
+
+  // Handle sort order
+  if (filters?.sort && filters.sort !== SORT_ORDERS.LATEST) {
+    params.set('order', filters.sort);
+  }
+
+  // Handle pagination
+  if (filters?.page && filters.page > 1) {
+    params.set('page', filters.page.toString());
+  }
+
+  const queryString = params.toString();
+  return queryString ? `${PATHS.LIST}?${queryString}` : PATHS.LIST;
+}
+
+/**
  * Check if this parser can handle the given URL
+ * @param url - URL to check
+ * @returns True if URL is a list page
  */
 export function canParse(url: string): boolean {
   return url.includes('/lista') || url.includes('/actualizado') || url === BASE_URL || url === `${BASE_URL}/`;

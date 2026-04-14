@@ -149,6 +149,8 @@ export interface MangaListFilters {
   sort?: SortOrder;
   /** Page number (1-indexed) */
   page?: number;
+  /** Search query string (used with ?s= parameter) */
+  searchQuery?: string;
 }
 
 /**

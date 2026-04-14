@@ -13,4 +13,8 @@ export {
 
 export { parseMangaDetail, canParse as canParseDetail } from './detail-parser.js';
 
-export { parseChapter, canParse as canParseChapter } from './chapter-parser.js';
+export { 
+  parseChapter, 
+  parseChaptersFromDetail,
+  canParse as canParseChapter 
+} from './chapter-parser.js';

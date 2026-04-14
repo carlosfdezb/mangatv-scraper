@@ -4,190 +4,85 @@
  */
 
 import * as cheerio from 'cheerio';
-import type { MangaDetail, Chapter, MangaType, Demographic, Genre } from '../../types/manga.js';
+import type { MangaDetail, MangaType, Demographic, Genre } from '../../types/manga.js';
 import { BASE_URL } from '../../constants/index.js';
-
-/**
- * Parse manga type from text
- */
-function parseMangaType(typeStr: string): MangaType {
-  const normalized = typeStr.trim().toUpperCase().replace(/\s+/g, '-');
-  const typeMap: Record<string, MangaType> = {
-    'MANGA': 'Manga',
-    'MANHWA': 'MANHWA',
-    'MANHUA': 'Manhua',
-    'ONE-SHOT': 'One-Shot',
-    'DOUJINSHI': 'Doujinshi',
-    'OEL': 'Oel',
-    'NOVELA': 'Novela',
-    'ONE SHOT': 'ONE SHOT',
-  };
-  return typeMap[normalized] ?? 'Manga';
-}
-
-/**
- * Parse demographics from text array
- */
-function parseDemographics(texts: string[]): Demographic[] {
-  const demographics: Demographic[] = [];
-  const validDemographics: Demographic[] = ['Seinen', 'Shoujo', 'Shounen', 'Josei', 'Kodomo'];
-  
-  for (const text of texts) {
-    const normalized = text.trim();
-    if (validDemographics.includes(normalized as Demographic)) {
-      demographics.push(normalized as Demographic);
-    }
-  }
-  
-  return demographics;
-}
-
-/**
- * Parse genres from text array
- */
-function parseGenres(texts: string[]): Genre[] {
-  // This would typically be validated against the full GENRES list
-  return texts.map(t => t.trim()).filter(t => t.length > 0) as Genre[];
-}
-
-/**
- * Parse chapter list from HTML
- */
-function parseChapters($: cheerio.Root, containerSelector: string): Chapter[] {
-  const chapters: Chapter[] = [];
-  
-  $(containerSelector).find('a').each((_, element) => {
-    const $el = $(element);
-    const href = $el.attr('href') ?? '';
-    
-    // Parse chapter ID from URL like /capitulo/12345/1
-    const match = href.match(/\/capitulo\/(\d+)\/([^\/]+)/);
-    if (!match || !match[1]) return;
-
-    const id = parseInt(match[1], 10);
-    const chapterPath = match[2] ?? '';
-    
-    // Extract chapter number from path or text
-    const numberText = $el.find('.chapter-number, .num, [class*="number"]').text().trim()
-      || chapterPath
-      || '';
-    const numberMatch = numberText.match(/(\d+(?:\.\d+)?)/);
-    const number = numberMatch?.[1] ?? (numberText || chapterPath);
-    
-    // Extract chapter title
-    const title = $el.find('.chapter-title, .title, [class*="title"]').text().trim()
-      || $el.text().trim()
-      || '';
-    
-    // Extract date
-    const date = $el.find('.date, [class*="date"]').text().trim()
-      || '';
-    
-    const url = href.startsWith('http') ? href : `${BASE_URL}${href}`;
-
-    chapters.push({
-      id,
-      number,
-      title,
-      date,
-      url,
-    });
-  });
-
-  return chapters;
-}
+import { extractMangaFromUrl, normalizeMangaType } from '../../utils/helpers.js';
+import { parseChaptersFromDetail } from './chapter-parser.js';
 
 /**
  * Parse manga detail page
+ * @param html - Raw HTML string from detail page
+ * @param url - URL of the detail page
+ * @returns Parsed MangaDetail object
  */
 export function parseMangaDetail(html: string, url: string): MangaDetail {
   const $ = cheerio.load(html);
-  
+
   // Extract manga ID and slug from URL
-  const urlMatch = url.match(/\/manga\/(\d+)\/([^/]+)/);
-  const id = urlMatch?.[1] ? parseInt(urlMatch[1], 10) : 0;
-  const slug = urlMatch?.[2] ?? '';
-  
-  // Try multiple selectors for the main content container
-  const contentSelectors = [
-    '.manga-detail',
-    '.manga-info',
-    '.info-manga',
-    '[class*="manga-detail"]',
-    '[class*="manga-info"]',
-  ];
-  
-  let $content: cheerio.Cheerio | null = null;
-  for (const selector of contentSelectors) {
-    if ($(selector).length > 0) {
-      $content = $(selector);
-      break;
-    }
-  }
-  
-  // Default to body if no specific container found
-  $content = $content ?? $('body');
+  const extracted = extractMangaFromUrl(url);
+  const id = extracted?.id ?? 0;
+  const slug = extracted?.slug ?? '';
 
-  // Extract title
-  const title = $content.find('h1.title, h1, .manga-title, [class*="title"]').first().text().trim()
-    ?? $('h1').first().text().trim()
-    ?? '';
+  // Main container: .bigcontent .infox
+  const $infox = $('.bigcontent .infox');
 
-  // Extract cover image
-  const coverUrl = $content.find('img.cover, .cover img, [class*="cover"] img').attr('src')
-    ?? $content.find('img').first().attr('src')
-    ?? '';
+  // Title from h1
+  const title = $infox.find('h1').first().text().trim() || '';
 
-  // Extract type
-  const typeText = $content.find('.type, .badge, [class*="type"]').first().text().trim() ?? 'Manga';
-  const type = parseMangaType(typeText);
+  // Cover from .cover img src
+  const coverUrl = $infox.find('.cover img').attr('src') ?? '';
 
-  // Extract description/synopsis
-  const description = $content.find('.description, .sinopsis, [class*="description"], [class*="sinopsis"]').text().trim()
-    ?? '';
+  // Metadata from .spe span elements
+  const $spe = $infox.find('.spe');
 
-  // Extract author
-  const author = $content.find('.author, [class*="author"]').first().text().trim()
-    ?? '';
+  // Type: ".type" span text (e.g., "Tipo: Manga" -> "Manga")
+  const typeTextRaw = $spe.find('.type').text().trim();
+  const typeText = typeTextRaw.replace(/^Tipo:\s*/i, '').trim();
+  const type: MangaType = normalizeMangaType(typeText);
 
-  // Extract artist
-  const artist = $content.find('.artist, [class*="artist"]').first().text().trim()
-    ?? author; // Fallback to author
+  // Status: ".status" span text (e.g., "Estado: En publicación" -> "En publicación")
+  const statusTextRaw = $spe.find('.status').text().trim();
+  const status = statusTextRaw.replace(/^Estado:\s*/i, '').trim();
 
-  // Extract status
-  const status = $content.find('.status, [class*="status"]').first().text().trim()
-    ?? '';
+  // Author: ".author" span text (e.g., "Autor: Name" -> "Name")
+  const authorTextRaw = $spe.find('.author').text().trim();
+  const author = authorTextRaw.replace(/^Autor:\s*/i, '').trim();
 
-  // Extract demographics
-  const demographicTexts = $content.find('.demographic, [class*="demographic"]').map((_, el) => $(el).text()).get();
-  const demographics = parseDemographics(demographicTexts);
+  // Artist: ".artist" span text (e.g., "Artista: Name" -> "Name")
+  const artistTextRaw = $spe.find('.artist').text().trim();
+  const artist = artistTextRaw.replace(/^Artista:\s*/i, '').trim() || author;
 
-  // Extract genres
-  const genreTexts = $content.find('.genre, .genres a, [class*="genre"]').map((_, el) => $(el).text()).get();
-  const genres = parseGenres(genreTexts);
+  // Genres from .mgen a elements
+  const genreTexts = $infox.find('.mgen a').map((_, el) => $(el).text().trim()).get();
+  const genres = genreTexts.filter(t => t.length > 0) as Genre[];
 
-  // Extract rating
-  const ratingText = $content.find('.rating, [class*="rating"]').first().text().trim() || '0';
+  // Demographic from .demographic span
+  const demographicText = $infox.find('.demographic').text().trim();
+  const demographics: Demographic[] = demographicText ? [demographicText as Demographic] : [];
+
+  // Description from .description
+  const description = $infox.find('.description').text().trim() || '';
+
+  // Rating from .rating .rating-num
+  const ratingText = $infox.find('.rating .rating-num').text().trim() || '0';
   const ratingMatch = ratingText.match(/(\d+(?:\.\d+)?)/);
   const rating = ratingMatch?.[1] ? parseFloat(ratingMatch[1]) : 0;
 
-  // Extract rating count
-  const ratingCountText = $content.find('.votes, [class*="votes"]').first().text().trim() || '0';
+  // Rating count from .rating .rating-count (e.g., "(1250 votos)" -> 1250)
+  const ratingCountText = $infox.find('.rating .rating-count').text().trim() || '0';
   const ratingCountMatch = ratingCountText.match(/(\d+)/);
   const ratingCount = ratingCountMatch?.[1] ? parseInt(ratingCountMatch[1], 10) : 0;
 
-  // Extract latest update
-  const latestUpdate = $content.find('.update, [class*="update"]').first().text().trim()
-    ?? '';
+  // Latest update - not directly available in detail page, use empty string
+  const latestUpdate = '';
 
-  // Extract chapters
-  const chapters = parseChapters($, '.chapters, .chapter-list, [class*="chapter"]');
+  // ERO check: look for .hot class or type containing "+18"
+  const isEro = $infox.find('.hot').length > 0 || typeTextRaw.includes('+18');
 
-  // Check for 18+ content
-  const isEro = $content.find('.ero, [class*="ero"]').length > 0 
-    || typeText.toLowerCase().includes('ero');
+  // Parse chapters from .bxcl ul li
+  const chapters = parseChaptersFromDetail($.html());
 
-  // Build full URL
+  // Full URL
   const mangaUrl = `${BASE_URL}/manga/${id}/${slug}`;
 
   return {
@@ -213,6 +108,8 @@ export function parseMangaDetail(html: string, url: string): MangaDetail {
 
 /**
  * Check if this parser can handle the given URL
+ * @param url - URL to check
+ * @returns True if URL is a manga detail page
  */
 export function canParse(url: string): boolean {
   return url.includes('/manga/') && !url.includes('/capitulo/');

@@ -14,4 +14,9 @@ export {
   safeJsonParse,
   chunkArray,
   deduplicateByKey,
+  extractMangaFromUrl,
+  parseRatingFromRel,
+  extractChapterNumber,
+  normalizeMangaType,
+  buildListUrl,
 } from './helpers.js';

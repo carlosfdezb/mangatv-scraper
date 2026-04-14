@@ -15,10 +15,11 @@ export type {
   PaginatedResult,
 } from './manga.js';
 
+export { ScraperError } from './scraper.js';
+
 export type {
   ScraperConfig,
   RequestOptions,
   HttpResponse,
-  ScraperError,
   RateLimiter,
 } from './scraper.js';

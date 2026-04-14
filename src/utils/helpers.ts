@@ -3,6 +3,9 @@
  * @module utils/helpers
  */
 
+import { BASE_URL, PATHS, SORT_ORDERS } from '../constants/index.js';
+import type { MangaListFilters } from '../types/manga.js';
+
 /**
  * Sleep for specified milliseconds
  * @param ms - Milliseconds to sleep
@@ -180,4 +183,129 @@ export function deduplicateByKey<T, K>(array: T[], keyFn: (item: T) => K): T[] {
     seen.add(key);
     return true;
   });
+}
+
+/**
+ * Extract manga ID and slug from a manga URL.
+ * @param url - Full URL or path like 'https://mangatv.net/manga/36031/peque-o-hongo'
+ * @returns Object with id and slug, or null if URL doesn't match expected format
+ */
+export function extractMangaFromUrl(url: string): { id: number; slug: string } | null {
+  const match = url.match(/\/manga\/(\d+)\/([^/?#]+)/);
+  if (!match?.[1] || !match[2]) {
+    return null;
+  }
+  const id = parseInt(match[1], 10);
+  const slug = match[2];
+  if (isNaN(id) || id <= 0) {
+    return null;
+  }
+  return { id, slug };
+}
+
+/**
+ * Parse rating data from the rel attribute JSON of .star_bar element.
+ * The rel attribute contains JSON like: {"numStar":5,"manga_id":36031}
+ * @param relJson - JSON string from rel attribute
+ * @returns Object with rating (0-5) and mangaId, or fallback values
+ */
+export function parseRatingFromRel(relJson: string): { rating: number; mangaId: number } {
+  const parsed = safeJsonParse<{ numStar?: number; manga_id?: number }>(relJson, { numStar: 0, manga_id: 0 });
+  return {
+    rating: parsed.numStar ?? 0,
+    mangaId: parsed.manga_id ?? 0,
+  };
+}
+
+/**
+ * Extract chapter number from a chapter title or URL text.
+ * Handles formats like "Capítulo 45.5", "Cap 100", "Extra 1", "Chapter 10"
+ * @param text - Text containing chapter number
+ * @returns Extracted chapter number as string, or empty string if not found
+ */
+export function extractChapterNumber(text: string): string {
+  // Match patterns like "Capítulo 45.5", "Cap 100", "Chapter 10", "Extra 1"
+  const patterns = [
+    /(?:cap[ií]tulo|cap|chapter|extra)\s*(\d+(?:\.\d+)?)/i,
+    /(\d+(?:\.\d+)?)/,  // Fallback: just match any number (possibly with decimal)
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Type mapping for manga types from the site
+ */
+const MANGA_TYPE_MAP: Record<string, import('../types/manga.js').MangaType> = {
+  'manga': 'Manga',
+  'manhwa': 'MANHWA',
+  'manhua': 'Manhua',
+  'one-shot': 'One-Shot',
+  'one shot': 'One-Shot',
+  'doujinshi': 'Doujinshi',
+  'oel': 'Oel',
+  'novela': 'Novela',
+};
+
+/**
+ * Normalize a manga type string to the MangaType enum.
+ * @param type - Raw type string from the site (e.g., "MANHWA", "Manhwa", "manga")
+ * @returns Normalized MangaType, or 'Manga' as fallback
+ */
+export function normalizeMangaType(type: string): import('../types/manga.js').MangaType {
+  const normalized = type.toLowerCase().trim();
+  const mapped = MANGA_TYPE_MAP[normalized];
+  return mapped ?? 'Manga';
+}
+
+/**
+ * Build a manga list URL with optional filters and pagination.
+ * Handles search queries with the 's' parameter.
+ * @param filters - Optional filter criteria including searchQuery
+ * @param page - Page number override (if different from filters.page)
+ * @returns Full list URL with query parameters
+ */
+export function buildListUrl(filters?: MangaListFilters, page?: number): string {
+  const params = new URLSearchParams();
+
+  // Handle search query (uses 's' parameter)
+  if (filters?.searchQuery) {
+    params.set('s', filters.searchQuery);
+  }
+
+  // Handle genre filters
+  if (filters?.genre && filters.genre.length > 0) {
+    filters.genre.forEach(g => params.append('g', g));
+  }
+
+  // Handle type filters
+  if (filters?.type && filters.type.length > 0) {
+    filters.type.forEach(t => params.append('type', t));
+  }
+
+  // Handle demographic filter
+  if (filters?.demographic) {
+    params.set('demographic', filters.demographic);
+  }
+
+  // Handle sort order
+  if (filters?.sort && filters.sort !== SORT_ORDERS.LATEST) {
+    params.set('order', filters.sort);
+  }
+
+  // Handle pagination - use explicit page parameter or fallback to filters.page
+  const pageNum = page ?? filters?.page;
+  if (pageNum && pageNum > 1) {
+    params.set('page', pageNum.toString());
+  }
+
+  const queryString = params.toString();
+  return queryString ? `${BASE_URL}${PATHS.LIST}?${queryString}` : `${BASE_URL}${PATHS.LIST}`;
 }
