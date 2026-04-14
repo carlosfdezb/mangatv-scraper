@@ -14,7 +14,7 @@
  * @module index
  */
 
-// Types
+// Types (type-only exports)
 export type {
   Manga,
   MangaDetail,
@@ -28,9 +28,11 @@ export type {
   ScraperConfig,
   RequestOptions,
   HttpResponse,
-  ScraperError,
   RateLimiter,
 } from './types/index.js';
+
+// Value exports (classes, functions, constants — NOT types)
+export { ScraperError } from './types/index.js';
 
 // Constants
 export {
