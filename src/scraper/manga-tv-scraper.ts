@@ -4,7 +4,8 @@
  */
 
 import { HttpClient, createHttpClient } from './http/client.js';
-import { buildListUrl, parseMangaListResult, parseMangaDetail } from './parsers/index.js';
+import { parseMangaListResult, parseMangaDetail } from './parsers/index.js';
+import { buildListUrl } from '../utils/helpers.js';
 import { BASE_URL, PATHS, buildMangaUrl } from '../constants/index.js';
 import type { 
   ScraperConfig,

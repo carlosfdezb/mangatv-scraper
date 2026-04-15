@@ -85,7 +85,7 @@ describe('MangaTVScraper', () => {
 
       await scraper.listManga();
 
-      expect(mockGet).toHaveBeenCalledWith('/lista');
+      expect(mockGet).toHaveBeenCalledWith('https://mangatv.net/lista');
     });
 
     it('should build URL with genre filter', async () => {
