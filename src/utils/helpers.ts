@@ -188,15 +188,17 @@ export function deduplicateByKey<T, K>(array: T[], keyFn: (item: T) => K): T[] {
 /**
  * Extract manga ID and slug from a manga URL.
  * @param url - Full URL or path like 'https://mangatv.net/manga/36031/peque-o-hongo'
+ *                  or 'https://mangatv.net/manga/36031/' (no slug)
  * @returns Object with id and slug, or null if URL doesn't match expected format
  */
 export function extractMangaFromUrl(url: string): { id: number; slug: string } | null {
-  const match = url.match(/\/manga\/(\d+)\/([^/?#]+)/);
-  if (!match?.[1] || !match[2]) {
+  // Match URLs like /manga/36031/slug or /manga/36031/ (no slug)
+  const match = url.match(/\/manga\/(\d+)\/?([^/?#]*)/);
+  if (!match?.[1]) {
     return null;
   }
   const id = parseInt(match[1], 10);
-  const slug = match[2];
+  const slug = match[2] || '';
   if (isNaN(id) || id <= 0) {
     return null;
   }

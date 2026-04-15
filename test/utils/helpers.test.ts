@@ -42,8 +42,8 @@ describe('Helpers', () => {
       expect(extractMangaFromUrl('https://mangatv.net/lista')).toBeNull();
     });
 
-    it('should return null for URL without slug', () => {
-      expect(extractMangaFromUrl('https://mangatv.net/manga/36031')).toBeNull();
+    it('should extract id with empty slug for URL without slug', () => {
+      expect(extractMangaFromUrl('https://mangatv.net/manga/36031')).toEqual({ id: 36031, slug: '' });
     });
 
     it('should return null for invalid id', () => {

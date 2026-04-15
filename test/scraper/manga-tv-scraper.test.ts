@@ -301,23 +301,23 @@ describe('MangaTVScraper', () => {
       await expect(scraper.getMangaDetail(-1, 'slug')).rejects.toThrow('Invalid manga ID');
     });
 
-    it('should work without slug (uses dash placeholder)', async () => {
+    it('should work without slug (omits slug from URL)', async () => {
       const fixtureHtml = readFileSync(join(FIXTURES_DIR, 'detail-page.html'), 'utf-8');
-      mockGet.mockResolvedValueOnce({ data: fixtureHtml, status: 200, headers: {}, url: 'https://mangatv.net/manga/36031/-' });
+      mockGet.mockResolvedValueOnce({ data: fixtureHtml, status: 200, headers: {}, url: 'https://mangatv.net/manga/36031/' });
 
-      // Calling without slug should use '-' as placeholder
+      // Calling without slug should omit slug from URL
       const result = await scraper.getMangaDetail(36031);
-      expect(mockGet).toHaveBeenCalledWith('https://mangatv.net/manga/36031/-');
+      expect(mockGet).toHaveBeenCalledWith('https://mangatv.net/manga/36031/');
       expect(result.id).toBe(36031);
     });
 
-    it('should work with whitespace-only slug (treated as missing, uses dash)', async () => {
+    it('should work with whitespace-only slug (treated as missing)', async () => {
       const fixtureHtml = readFileSync(join(FIXTURES_DIR, 'detail-page.html'), 'utf-8');
-      mockGet.mockResolvedValueOnce({ data: fixtureHtml, status: 200, headers: {}, url: 'https://mangatv.net/manga/36031/-' });
+      mockGet.mockResolvedValueOnce({ data: fixtureHtml, status: 200, headers: {}, url: 'https://mangatv.net/manga/36031/' });
 
       // Whitespace-only slug should be treated as missing
       const result = await scraper.getMangaDetail(36031, '   ');
-      expect(mockGet).toHaveBeenCalledWith('https://mangatv.net/manga/36031/-');
+      expect(mockGet).toHaveBeenCalledWith('https://mangatv.net/manga/36031/');
       expect(result.id).toBe(36031);
     });
 

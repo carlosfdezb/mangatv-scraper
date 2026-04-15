@@ -34,12 +34,15 @@ export function buildUrl(path: string): string {
 /**
  * Build a manga detail URL
  * @param id - Manga ID (required)
- * @param slug - Manga slug (optional, defaults to '-' for SEO-neutral placeholder)
+ * @param slug - Manga slug (optional, omit for ID-only URL)
  * @returns Full manga detail URL
  */
 export function buildMangaUrl(id: number, slug?: string): string {
-  const slugPart = slug?.trim() || '-';
-  return buildUrl(`${PATHS.MANGA}/${id}/${slugPart}`);
+  if (!slug || slug.trim() === '') {
+    // No slug provided - use ID-only URL (site accepts /manga/{id} and /manga/{id}/)
+    return buildUrl(`${PATHS.MANGA}/${id}/`);
+  }
+  return buildUrl(`${PATHS.MANGA}/${id}/${slug.trim()}`);
 }
 
 /**
