@@ -424,6 +424,104 @@ describe('MangaTVScraper', () => {
     });
   });
 
+  describe('getChapterPages', () => {
+    it('should fetch and parse chapter pages from /leer/ URL', async () => {
+      const html = loadFixture('chapter-page.html');
+      mockGet.mockResolvedValue({
+        data: html,
+        status: 200,
+        headers: {},
+        url: 'https://mangatv.net/leer/b35a0970901f4f',
+      });
+
+      const result = await scraper.getChapterPages('https://mangatv.net/leer/b35a0970901f4f');
+
+      expect(result.pages).toHaveLength(5);
+      expect(result.totalPages).toBe(5);
+      expect(result.chapterHash).toBe('b35a0970901f4f');
+      expect(result.prevChapterUrl).toBeDefined();
+      expect(result.nextChapterUrl).toBeDefined();
+    });
+
+    it('should fetch and parse chapter pages from /capitulo/ URL', async () => {
+      const html = loadFixture('chapter-page.html');
+      mockGet.mockResolvedValue({
+        data: html,
+        status: 200,
+        headers: {},
+        url: 'https://mangatv.net/capitulo/36031/65',
+      });
+
+      const result = await scraper.getChapterPages('https://mangatv.net/capitulo/36031/65');
+
+      expect(result.pages).toHaveLength(5);
+      expect(result.totalPages).toBe(5);
+      expect(result.chapterHash).toBeUndefined();
+    });
+
+    it('should throw ScraperError for empty URL', async () => {
+      await expect(scraper.getChapterPages('')).rejects.toThrow(ScraperError);
+      await expect(scraper.getChapterPages('')).rejects.toThrow('URL cannot be empty');
+    });
+
+    it('should throw ScraperError for whitespace-only URL', async () => {
+      await expect(scraper.getChapterPages('   ')).rejects.toThrow(ScraperError);
+      await expect(scraper.getChapterPages('   ')).rejects.toThrow('URL cannot be empty');
+    });
+
+    it('should throw ScraperError for invalid URL format', async () => {
+      await expect(scraper.getChapterPages('https://mangatv.net/manga/36031/slug'))
+        .rejects.toThrow(ScraperError);
+      await expect(scraper.getChapterPages('https://mangatv.net/manga/36031/slug'))
+        .rejects.toThrow(/Invalid chapter URL/);
+    });
+
+    it('should throw ScraperError for /lista/ URL', async () => {
+      await expect(scraper.getChapterPages('https://mangatv.net/lista'))
+        .rejects.toThrow(ScraperError);
+    });
+
+    it('should wrap network errors in ScraperError with retryable flag', async () => {
+      mockGet.mockRejectedValue(new Error('Network failure'));
+
+      try {
+        await scraper.getChapterPages('https://mangatv.net/leer/b35a0970901f4f');
+        fail('Expected error to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ScraperError);
+        expect((error as ScraperError).isRetryable).toBe(true);
+      }
+    });
+
+    it('should throw non-retryable ScraperError for 404', async () => {
+      mockGet.mockRejectedValue(new Error('status code 404'));
+
+      try {
+        await scraper.getChapterPages('https://mangatv.net/leer/nonexistent');
+        fail('Expected error to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ScraperError);
+        expect((error as ScraperError).isRetryable).toBe(false);
+        expect((error as ScraperError).statusCode).toBe(404);
+      }
+    });
+
+    it('should preserve ScraperError from parser', async () => {
+      const htmlWithoutTsReader = '<html><body><p>No chapter</p></body></html>';
+      mockGet.mockResolvedValue({
+        data: htmlWithoutTsReader,
+        status: 200,
+        headers: {},
+        url: 'https://mangatv.net/leer/b35a0970901f4f',
+      });
+
+      await expect(scraper.getChapterPages('https://mangatv.net/leer/b35a0970901f4f'))
+        .rejects.toThrow(ScraperError);
+      await expect(scraper.getChapterPages('https://mangatv.net/leer/b35a0970901f4f'))
+        .rejects.toThrow(/ts_reader/);
+    });
+  });
+
   describe('createScraper factory', () => {
     it('should create scraper instance', () => {
       const scraper = createScraper();

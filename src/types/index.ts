@@ -7,6 +7,8 @@ export type {
   Manga,
   MangaDetail,
   Chapter,
+  ChapterPage,
+  ChapterPages,
   MangaType,
   Demographic,
   Genre,

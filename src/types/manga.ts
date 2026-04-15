@@ -85,6 +85,36 @@ export interface Chapter {
 }
 
 /**
+ * Represents a single page in a chapter
+ */
+export interface ChapterPage {
+  /** Page number, 1-indexed */
+  readonly pageNumber: number;
+  /** Full CDN image URL with https:// protocol */
+  readonly imageUrl: string;
+  /** Image format (webp or jpg) */
+  readonly format: 'webp' | 'jpg';
+}
+
+/**
+ * Represents all pages in a chapter with navigation
+ */
+export interface ChapterPages {
+  /** Source chapter URL */
+  readonly url: string;
+  /** Chapter hash from URL (for /leer/ URLs) */
+  readonly chapterHash?: string;
+  /** Total number of pages */
+  readonly totalPages: number;
+  /** Ordered list of chapter pages */
+  readonly pages: readonly ChapterPage[];
+  /** URL to previous chapter, if available */
+  readonly prevChapterUrl?: string;
+  /** URL to next chapter, if available */
+  readonly nextChapterUrl?: string;
+}
+
+/**
  * Represents a manga entry in list views
  */
 export interface Manga {

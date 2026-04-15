@@ -19,6 +19,8 @@ export type {
   Manga,
   MangaDetail,
   Chapter,
+  ChapterPage,
+  ChapterPages,
   MangaType,
   Demographic,
   Genre,
@@ -67,7 +69,9 @@ export {
   parseMangaDetail,
   canParseDetail,
   parseChapter,
+  parseChapterPages,
   canParseChapter,
+  canParseChapterPages,
 } from './scraper/parsers/index.js';
 
 // Utils

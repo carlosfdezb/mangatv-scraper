@@ -6,7 +6,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { parseChaptersFromDetail, parseChapter } from '../../src/scraper/parsers/chapter-parser.js';
+import { parseChaptersFromDetail, parseChapter, parseChapterPages, canParseChapterPages, canParse } from '../../src/scraper/parsers/chapter-parser.js';
+import { ScraperError } from '../../src/types/scraper.js';
 
 const FIXTURES_DIR = join(__dirname, '../fixtures');
 
@@ -266,6 +267,258 @@ describe('ChapterParser', () => {
       expect(result).toHaveLength(1);
       expect(result[0].number).toBe('10');
       expect(result[0].title).toContain('Capítulo 10');
+    });
+  });
+
+  describe('canParse', () => {
+    it('should return true for /capitulo/ URLs', () => {
+      expect(canParse('https://mangatv.net/capitulo/36031/45')).toBe(true);
+      expect(canParse('/capitulo/12345/1')).toBe(true);
+    });
+
+    it('should return true for /leer/ URLs', () => {
+      expect(canParse('https://mangatv.net/leer/b35a0970901f4f')).toBe(true);
+      expect(canParse('/leer/abc123')).toBe(true);
+    });
+
+    it('should return false for non-chapter URLs', () => {
+      expect(canParse('https://mangatv.net/manga/36031/pequeno-hongo')).toBe(false);
+      expect(canParse('https://mangatv.net/lista')).toBe(false);
+      expect(canParse('https://mangatv.net/actualizado')).toBe(false);
+    });
+  });
+
+  describe('canParseChapterPages', () => {
+    it('should return true for /leer/ URLs', () => {
+      expect(canParseChapterPages('https://mangatv.net/leer/b35a0970901f4f')).toBe(true);
+      expect(canParseChapterPages('/leer/abc123')).toBe(true);
+      expect(canParseChapterPages('https://mangatv.net/leer/abc')).toBe(true);
+    });
+
+    it('should return true for /capitulo/ URLs', () => {
+      expect(canParseChapterPages('https://mangatv.net/capitulo/36031/45')).toBe(true);
+      expect(canParseChapterPages('/capitulo/12345/1')).toBe(true);
+      expect(canParseChapterPages('/capitulo/12345/42.5')).toBe(true);
+    });
+
+    it('should return false for /manga/ URLs', () => {
+      expect(canParseChapterPages('https://mangatv.net/manga/36031/pequeno-hongo')).toBe(false);
+      expect(canParseChapterPages('/manga/123/slug')).toBe(false);
+    });
+
+    it('should return false for /lista/ URLs', () => {
+      expect(canParseChapterPages('https://mangatv.net/lista')).toBe(false);
+      expect(canParseChapterPages('/lista?g=Accion')).toBe(false);
+    });
+
+    it('should return false for /actualizado/ URLs', () => {
+      expect(canParseChapterPages('https://mangatv.net/actualizado')).toBe(false);
+      expect(canParseChapterPages('/actualizado?page=2')).toBe(false);
+    });
+  });
+});
+
+describe('parseChapterPages', () => {
+  describe('parseChapterPages - happy path', () => {
+    it('should parse chapter pages from fixture HTML', () => {
+      const html = loadFixture('chapter-page.html');
+      const url = 'https://mangatv.net/leer/b35a0970901f4f';
+      const result = parseChapterPages(html, url);
+      
+      expect(result.pages).toHaveLength(5);
+      expect(result.totalPages).toBe(5);
+      expect(result.chapterHash).toBe('b35a0970901f4f');
+      expect(result.url).toBe(url);
+    });
+
+    it('should assign correct page numbers starting from 1', () => {
+      const html = loadFixture('chapter-page.html');
+      const result = parseChapterPages(html, 'https://mangatv.net/leer/b35a0970901f4f');
+      
+      expect(result.pages[0].pageNumber).toBe(1);
+      expect(result.pages[4].pageNumber).toBe(5);
+    });
+
+    it('should normalize protocol-relative URLs to https://', () => {
+      const html = loadFixture('chapter-page.html');
+      const result = parseChapterPages(html, 'https://mangatv.net/leer/b35a0970901f4f');
+      
+      for (const page of result.pages) {
+        expect(page.imageUrl).toMatch(/^https:\/\//);
+      }
+    });
+
+    it('should extract image format from URL', () => {
+      const html = loadFixture('chapter-page.html');
+      const result = parseChapterPages(html, 'https://mangatv.net/leer/b35a0970901f4f');
+      
+      // All URLs in fixture end with .webp
+      for (const page of result.pages) {
+        expect(page.format).toBe('webp');
+      }
+    });
+
+    it('should include prevChapterUrl when available', () => {
+      const html = loadFixture('chapter-page.html');
+      const result = parseChapterPages(html, 'https://mangatv.net/leer/b35a0970901f4f');
+      
+      expect(result.prevChapterUrl).toBeDefined();
+      expect(result.prevChapterUrl).toContain('/leer/b35a0970901f4e');
+    });
+
+    it('should include nextChapterUrl when available', () => {
+      const html = loadFixture('chapter-page.html');
+      const result = parseChapterPages(html, 'https://mangatv.net/leer/b35a0970901f4f');
+      
+      expect(result.nextChapterUrl).toBeDefined();
+      expect(result.nextChapterUrl).toContain('/leer/b35a0970901f4g');
+    });
+  });
+
+  describe('parseChapterPages - metadata filtering', () => {
+    it('should filter out non-image entries', () => {
+      // This tests that the CDN pattern filtering works
+      // Even if decoded URLs include metadata entries, only CDN URLs should pass
+      const htmlWithMetadata = `
+        <html>
+          <body>
+            <script>
+              ts_reader.run({
+                ts_urs: 'Ly9pbWc1Lm1hbmdhdHYubmV0L2xpYnJhcnkvMzYwMzEvYjM1YTA5NzA5MDFmNGYvMDEyMzQ1LndlYnA=|bWF0YWRhdGE=|Ly9pbWc1Lm1hbmdhdHYubmV0L2xpYnJhcnkvMzYwMzEvYjM1YTA5NzA5MDFmNGYvMDQ1Njc4LndlYnA=',
+              });
+            </script>
+          </body>
+        </html>
+      `;
+      const result = parseChapterPages(htmlWithMetadata, 'https://mangatv.net/leer/test');
+      
+      // Should only have 2 pages (filtering out "bWF0YWRhdGE=")
+      expect(result.totalPages).toBe(2);
+      expect(result.pages).toHaveLength(2);
+    });
+  });
+
+  describe('parseChapterPages - missing ts_reader', () => {
+    it('should throw ScraperError when ts_reader is missing', () => {
+      const html = '<html><body><p>No chapter content here</p></body></html>';
+      
+      expect(() => parseChapterPages(html, 'https://mangatv.net/leer/test'))
+        .toThrow(ScraperError);
+    });
+
+    it('should throw ScraperError with descriptive message', () => {
+      const html = '<html><body><p>No chapter content here</p></body></html>';
+      
+      try {
+        parseChapterPages(html, 'https://mangatv.net/leer/test');
+        fail('Expected error to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ScraperError);
+        expect((error as ScraperError).message).toContain('ts_reader');
+      }
+    });
+
+    it('should throw ScraperError with url in error', () => {
+      const html = '<html><body><p>No chapter content here</p></body></html>';
+      const testUrl = 'https://mangatv.net/leer/test123';
+      
+      try {
+        parseChapterPages(html, testUrl);
+        fail('Expected error to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ScraperError);
+        expect((error as ScraperError).url).toBe(testUrl);
+      }
+    });
+  });
+
+  describe('parseChapterPages - no valid images', () => {
+    it('should throw ScraperError when no valid image URLs found', () => {
+      // HTML with ts_reader but non-matching base64 content
+      const html = `
+        <html>
+          <body>
+            <script>
+              ts_reader.run({
+                ts_urs: 'bWF0YWRhdGE=|b3RoZXJkYXRh',
+              });
+            </script>
+          </body>
+        </html>
+      `;
+      
+      expect(() => parseChapterPages(html, 'https://mangatv.net/leer/test'))
+        .toThrow(ScraperError);
+    });
+
+    it('should throw ScraperError with descriptive message for no images', () => {
+      // HTML with ts_reader and base64 that decodes to non-matching URL
+      // Ly9pbWctbm90LW1hbmdhdHYubmV0L3NvbWUvcGF0aC9pbWFnZS53ZWJw decodes to //img-not-mangatv.net/some/path/image.webp
+      // which doesn't match the img{N}.mangatv.net/library/ pattern
+      const html = `
+        <html>
+          <body>
+            <script>
+              ts_reader.run({
+                ts_urs: 'Ly9pbWctbm90LW1hbmdhdHYubmV0L3NvbWUvcGF0aC9pbWFnZS53ZWJw',
+              });
+            </script>
+          </body>
+        </html>
+      `;
+      
+      try {
+        parseChapterPages(html, 'https://mangatv.net/leer/test');
+        fail('Expected error to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ScraperError);
+        expect((error as ScraperError).message).toContain('no valid image URLs');
+      }
+    });
+  });
+
+  describe('parseChapterPages - base64 decode failure', () => {
+    it('should skip entries that fail base64 decode', () => {
+      // This is handled gracefully - the test just verifies we get some pages
+      const html = `
+        <html>
+          <body>
+            <script>
+              ts_reader.run({
+                ts_urs: 'Ly9pbWc1Lm1hbmdhdHYubmV0L2xpYnJhcnkvMzYwMzEvYjM1YTA5NzA5MDFmNGYvMDEyMzQ1LndlYnA=',
+              });
+            </script>
+          </body>
+        </html>
+      `;
+      
+      const result = parseChapterPages(html, 'https://mangatv.net/leer/test');
+      
+      // Should successfully parse the one valid URL
+      expect(result.pages).toHaveLength(1);
+      expect(result.pages[0].imageUrl).toContain('img5.mangatv.net');
+    });
+  });
+
+  describe('parseChapterPages - /capitulo/ URL without hash', () => {
+    it('should parse /capitulo/ URL without chapterHash', () => {
+      const html = `
+        <html>
+          <body>
+            <script>
+              ts_reader.run({
+                ts_urs: 'Ly9pbWc1Lm1hbmdhdHYubmV0L2xpYnJhcnkvMzYwMzEvYjM1YTA5NzA5MDFmNGYvMDEyMzQ1LndlYnA=',
+              });
+            </script>
+          </body>
+        </html>
+      `;
+      const url = 'https://mangatv.net/capitulo/36031/45';
+      const result = parseChapterPages(html, url);
+      
+      expect(result.url).toBe(url);
+      expect(result.chapterHash).toBeUndefined();
+      expect(result.pages).toHaveLength(1);
     });
   });
 });

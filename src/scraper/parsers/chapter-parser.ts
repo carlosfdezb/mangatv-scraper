@@ -4,9 +4,10 @@
  */
 
 import * as cheerio from 'cheerio';
-import type { Chapter } from '../../types/manga.js';
+import type { Chapter, ChapterPage, ChapterPages } from '../../types/manga.js';
 import { BASE_URL } from '../../constants/index.js';
 import { extractChapterNumber, extractMangaFromUrl, parseSiteDate } from '../../utils/helpers.js';
+import { ScraperError } from '../../types/scraper.js';
 
 /**
  * Parse chapter list from detail page HTML
@@ -186,5 +187,175 @@ export function parseChapter(html: string, url: string): Chapter {
  * @returns True if URL is a chapter page
  */
 export function canParse(url: string): boolean {
-  return url.includes('/capitulo/');
+  return url.includes('/capitulo/') || url.includes('/leer/');
+}
+
+/**
+ * Check if URL is a chapter pages URL (/leer/ or /capitulo/)
+ * @param url - URL to check
+ * @returns True if URL is a chapter pages URL
+ */
+export function canParseChapterPages(url: string): boolean {
+  return /\/leer\/[\w]+/.test(url) || /\/capitulo\/\d+\/[^/?#]+/.test(url);
+}
+
+/**
+ * Extract chapter hash from /leer/ URL
+ * @param url - Chapter URL
+ * @returns Chapter hash or undefined
+ */
+function extractChapterHash(url: string): string | undefined {
+  const leerMatch = url.match(/\/leer\/([\w]+)/);
+  if (leerMatch?.[1]) {
+    return leerMatch[1];
+  }
+  return undefined;
+}
+
+/**
+ * Parse chapter pages from chapter page HTML
+ * Extracts image URLs from packed ts_reader JavaScript variable
+ * @param html - Raw HTML string from chapter page
+ * @param url - URL of the chapter page
+ * @returns ChapterPages with all decoded image URLs
+ * @throws {ScraperError} When ts_reader is missing or no valid images found
+ */
+export function parseChapterPages(html: string, url: string): ChapterPages {
+  // Find script containing ts_reader.run
+  const scriptRegex = /<script[^>]*>[\s\S]*?ts_reader\.run[\s\S]*?<\/script>/gi;
+  const scriptMatch = html.match(scriptRegex);
+  
+  if (!scriptMatch || scriptMatch.length === 0) {
+    throw new ScraperError(
+      'Failed to extract chapter content: ts_reader variable not found in page HTML',
+      url,
+      undefined,
+      false
+    );
+  }
+  
+  // Extract the base64-encoded portion from ts_reader.run call
+  // The pattern starts with Ly9pbWc (base64 encoded "//img")
+  const base64Regex = /Ly9pbWc[\w+/=|]+/g;
+  
+  let encodedString: string | undefined;
+  for (const script of scriptMatch) {
+    const match = script.match(base64Regex);
+    if (match && match[0]) {
+      encodedString = match[0];
+      break;
+    }
+  }
+  
+  if (!encodedString) {
+    throw new ScraperError(
+      'Failed to extract chapter content: could not find base64-encoded image data',
+      url,
+      undefined,
+      false
+    );
+  }
+  
+  // Split by pipe and decode each part
+  const parts = encodedString.split('|');
+  const decodedUrls: string[] = [];
+  
+  for (const part of parts) {
+    try {
+      const decoded = Buffer.from(part, 'base64').toString('utf-8');
+      decodedUrls.push(decoded);
+    } catch {
+      // Skip parts that fail to decode
+      console.warn(`Warning: Failed to decode base64 part, skipping: ${part.substring(0, 20)}...`);
+    }
+  }
+  
+  // Filter to only CDN image URLs (matching img{N}.mangatv.net/library/)
+  const cdnPattern = /^\/\/img\d+\.mangatv\.net\/library\//;
+  const imageUrls = decodedUrls.filter(url => cdnPattern.test(url));
+  
+  if (imageUrls.length === 0) {
+    throw new ScraperError(
+      'Failed to extract chapter content: no valid image URLs found after decoding',
+      url,
+      undefined,
+      false
+    );
+  }
+  
+  // Normalize protocol-relative URLs to https://
+  const normalizedUrls = imageUrls.map(u => u.replace(/^\/\//, 'https://'));
+  
+  // Extract format from URL (webp or jpg)
+  const extractFormat = (urlString: string): 'webp' | 'jpg' => {
+    if (urlString.includes('.webp')) return 'webp';
+    if (urlString.includes('.jpg')) return 'jpg';
+    if (urlString.includes('.jpeg')) return 'jpg';
+    return 'webp'; // default to webp
+  };
+  
+  // Build chapter pages array
+  const pages: ChapterPage[] = normalizedUrls.map((imageUrl, index) => ({
+    pageNumber: index + 1,
+    imageUrl,
+    format: extractFormat(imageUrl),
+  }));
+  
+  // Extract chapter hash from URL if present
+  const chapterHash = extractChapterHash(url);
+  
+  // Try to extract prev/next chapter URLs from navigation links
+  const $ = cheerio.load(html);
+  let prevChapterUrl: string | undefined;
+  let nextChapterUrl: string | undefined;
+  
+  // Look for prev/next navigation links
+  const navSelectors = [
+    '.nav-prev a',
+    '.nav-next a',
+    '.chapter-nav .prev a',
+    '.chapter-nav .next a',
+    'a[rel="prev"]',
+    'a[rel="next"]',
+    '.p-2 a', // common pagination pattern
+  ];
+  
+  for (const selector of navSelectors) {
+    const $prevLink = $(selector).first();
+    if ($prevLink.length > 0) {
+      const href = $prevLink.attr('href');
+      if (href) {
+        if (!prevChapterUrl && selector.includes('prev')) {
+          prevChapterUrl = href.startsWith('http') ? href : `${BASE_URL}${href}`;
+        }
+        if (!nextChapterUrl && selector.includes('next')) {
+          nextChapterUrl = href.startsWith('http') ? href : `${BASE_URL}${href}`;
+        }
+      }
+    }
+  }
+  
+  // Also check for class-based nav links
+  const $allLinks = $('a');
+  $allLinks.each((_, el) => {
+    const $el = $(el);
+    const className = $el.attr('class') || '';
+    const href = $el.attr('href') || '';
+    
+    if (className.includes('prev') && !prevChapterUrl) {
+      prevChapterUrl = href.startsWith('http') ? href : `${BASE_URL}${href}`;
+    }
+    if (className.includes('next') && !nextChapterUrl) {
+      nextChapterUrl = href.startsWith('http') ? href : `${BASE_URL}${href}`;
+    }
+  });
+  
+  return {
+    url,
+    chapterHash,
+    totalPages: pages.length,
+    pages,
+    prevChapterUrl,
+    nextChapterUrl,
+  };
 }

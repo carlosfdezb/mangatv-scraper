@@ -4,7 +4,7 @@
  */
 
 import { HttpClient, createHttpClient } from './http/client.js';
-import { parseMangaListResult, parseMangaDetail } from './parsers/index.js';
+import { parseMangaListResult, parseMangaDetail, parseChapterPages, canParseChapterPages } from './parsers/index.js';
 import { buildListUrl } from '../utils/helpers.js';
 import { BASE_URL, PATHS, buildMangaUrl } from '../constants/index.js';
 import type { 
@@ -13,6 +13,7 @@ import type {
   Manga,
   MangaDetail,
   PaginatedResult,
+  ChapterPages,
 } from '../types/index.js';
 import { ScraperError } from '../types/scraper.js';
 
@@ -210,6 +211,42 @@ export class MangaTVScraper {
         url,
         undefined,
         true
+      );
+    }
+  }
+
+  /**
+   * Get chapter pages (image URLs) from a chapter page
+   * @param url - Full chapter page URL (/leer/{hash} or /capitulo/{id}/{num})
+   * @returns ChapterPages with all decoded image URLs
+   * @throws {ScraperError} When URL is invalid, empty, or chapter content cannot be extracted
+   */
+  async getChapterPages(url: string): Promise<ChapterPages> {
+    if (!url?.trim()) {
+      throw new ScraperError('URL cannot be empty', '');
+    }
+
+    if (!canParseChapterPages(url)) {
+      throw new ScraperError(
+        `Invalid chapter URL: ${url}. Expected /leer/{hash} or /capitulo/{id}/{num} format.`,
+        url,
+        undefined,
+        false
+      );
+    }
+
+    try {
+      const html = await this.fetchHtml(url);
+      return parseChapterPages(html, url);
+    } catch (error) {
+      if (error instanceof ScraperError) throw error;
+      // Check if it's a 404
+      const statusCode = error instanceof Error && error.message.includes('status code 404') ? 404 : undefined;
+      throw new ScraperError(
+        `Failed to fetch chapter pages: ${error instanceof Error ? error.message : String(error)}`,
+        url,
+        statusCode,
+        statusCode === 404 ? false : true
       );
     }
   }

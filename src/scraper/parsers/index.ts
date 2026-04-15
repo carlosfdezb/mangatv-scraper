@@ -16,5 +16,7 @@ export { parseMangaDetail, canParse as canParseDetail } from './detail-parser.js
 export { 
   parseChapter, 
   parseChaptersFromDetail,
-  canParse as canParseChapter 
+  parseChapterPages,
+  canParse as canParseChapter,
+  canParseChapterPages,
 } from './chapter-parser.js';
