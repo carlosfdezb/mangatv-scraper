@@ -33,12 +33,13 @@ export function buildUrl(path: string): string {
 
 /**
  * Build a manga detail URL
- * @param id - Manga ID
- * @param slug - Manga slug
+ * @param id - Manga ID (required)
+ * @param slug - Manga slug (optional, defaults to '-' for SEO-neutral placeholder)
  * @returns Full manga detail URL
  */
-export function buildMangaUrl(id: number, slug: string): string {
-  return buildUrl(`${PATHS.MANGA}/${id}/${slug}`);
+export function buildMangaUrl(id: number, slug?: string): string {
+  const slugPart = slug?.trim() || '-';
+  return buildUrl(`${PATHS.MANGA}/${id}/${slugPart}`);
 }
 
 /**

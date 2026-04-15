@@ -138,15 +138,12 @@ export class MangaTVScraper {
   /**
    * Get manga details by ID and slug
    * @param id - Manga ID
-   * @param slug - Manga slug
+   * @param slug - Manga slug (optional, inferred from URL if not provided)
    * @returns Full manga details
    */
-  async getMangaDetail(id: number, slug: string): Promise<MangaDetail> {
+  async getMangaDetail(id: number, slug?: string): Promise<MangaDetail> {
     if (!id || id <= 0) {
       throw new ScraperError(`Invalid manga ID: ${id}`, '');
-    }
-    if (!slug?.trim()) {
-      throw new ScraperError('Slug cannot be empty', '');
     }
 
     const url = buildMangaUrl(id, slug);
