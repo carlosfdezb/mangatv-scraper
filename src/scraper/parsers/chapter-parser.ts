@@ -10,11 +10,92 @@ import { extractChapterNumber, extractMangaFromUrl, parseSiteDate } from '../../
 import { ScraperError } from '../../types/scraper.js';
 
 /**
+ * Internal intermediate type for parsed chapters before grouping.
+ * Extends Chapter with hash and scanlator extracted during parsing.
+ * Not exported - only used internally.
+ */
+interface ParsedChapter extends Chapter {
+  /** Hash extracted from /leer/{hash} URL segment */
+  hash: string;
+  /** Scanlator from second .chapternum span */
+  scanlator: string;
+}
+
+/**
+ * Group chapters with the same number into single Chapter entries with versions.
+ * When multiple versions exist (different scanlators), the first occurrence becomes
+ * the primary chapter and subsequent ones are collected into the versions array.
+ * @param chapters - Array of ParsedChapter with hash and scanlator info
+ * @returns Grouped chapters with versions array
+ */
+export function groupChapterVersions(chapters: ParsedChapter[]): Chapter[] {
+  // Group by normalized chapter number
+  const grouped = new Map<string, ParsedChapter[]>();
+
+  for (const chapter of chapters) {
+    const normalizedNum = extractChapterNumber(chapter.number) || chapter.number;
+    const existing = grouped.get(normalizedNum) || [];
+    existing.push(chapter);
+    grouped.set(normalizedNum, existing);
+  }
+
+  // Convert grouped chapters to final format
+  const result: Chapter[] = [];
+
+  for (const [, chapterList] of grouped) {
+    if (chapterList.length === 1) {
+      // Single version - no grouping needed, include no versions field
+      const ch = chapterList[0];
+      if (!ch) continue;
+      result.push({
+        id: ch.id,
+        number: ch.number,
+        title: ch.title,
+        date: ch.date,
+        url: ch.url,
+      });
+    } else {
+      // Multiple versions - group them
+      // Sort by date descending to get the latest as primary
+      const sorted = [...chapterList].sort((a, b) => {
+        const dateA = new Date(a.date).getTime() || 0;
+        const dateB = new Date(b.date).getTime() || 0;
+        return dateB - dateA;
+      });
+
+      const primary = sorted[0];
+      if (!primary) continue;
+      const versions = sorted.slice(1).map(ch => ({
+        url: ch.url,
+        hash: ch.hash || undefined,
+        scanlator: ch.scanlator || undefined,
+        date: ch.date,
+      }));
+
+      result.push({
+        id: primary.id,
+        number: primary.number,
+        title: primary.title,
+        date: primary.date,
+        url: primary.url,
+        versions: versions,
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
  * Parse chapter list from detail page HTML
  * @param html - Raw HTML string from detail page
+ * @param options - Optional parsing options (for future use)
  * @returns Array of parsed Chapter objects
  */
-export function parseChaptersFromDetail(html: string): Chapter[] {
+export function parseChaptersFromDetail(
+  html: string,
+  options?: { extractVersions?: boolean }
+): Chapter[] {
   const $ = cheerio.load(html);
   const chapters: Chapter[] = [];
 
@@ -118,6 +199,136 @@ export function parseChaptersFromDetail(html: string): Chapter[] {
       title: titleText,
       date,
       url: chapterUrl,
+    });
+  });
+
+  return chapters;
+}
+
+/**
+ * Parse chapter list from detail page HTML with full metadata extraction.
+ * Returns internal ParsedChapter[] for use in grouping/ordering pipeline.
+ * @param html - Raw HTML string from detail page
+ * @returns Array of parsed chapters with hash and scanlator
+ */
+export function parseChaptersFromDetailWithMeta(html: string): ParsedChapter[] {
+  const $ = cheerio.load(html);
+  const chapters: ParsedChapter[] = [];
+
+  const $chapterList = $('.bxcl ul li');
+  let $liElements = $chapterList;
+  if ($liElements.length === 0) {
+    $liElements = $('.bxcl .s > li');
+  }
+  if ($liElements.length === 0) {
+    $liElements = $('li', '.bxcl');
+  }
+  
+  if ($liElements.length === 0) {
+    return chapters;
+  }
+
+  // Extract hash from /leer/{hash} URL
+  const extractHash = (url: string): string => {
+    const match = url.match(/\/leer\/([\w]+)/);
+    return match?.[1] ?? '';
+  };
+
+  // Extract scanlator from second .chapternum span
+  const extractScanlator = ($li: cheerio.Cheerio): string => {
+    const $ephNum = $li.find('.eph-num');
+    if ($ephNum.length === 0) return '';
+    
+    const $chapternumSpans = $ephNum.find('.chapternum');
+    if ($chapternumSpans.length <= 1) return '';
+    
+    // Second span contains text like "title | scanlator" or just "scanlator"
+    // We want the part after the pipe (the scanlator name)
+    const scanlatorText = $chapternumSpans.eq(1).text().trim();
+    
+    // Split by pipe and take the last part (scanlator name)
+    const parts = scanlatorText.split('|');
+    const lastPart = parts[parts.length - 1];
+    if (parts.length > 1 && lastPart) {
+      // Return the part after the pipe, trimmed
+      return lastPart.trim();
+    }
+    
+    // If no pipe, return the whole text (might be just the scanlator)
+    return scanlatorText;
+  };
+
+  $liElements.each((_, li) => {
+    const $li = $(li);
+
+    if ($li.find('.no-chapters').length > 0) {
+      return;
+    }
+
+    let href = '';
+    let titleText = '';
+    let dateRaw = '';
+
+    const newHref = $li.find('.dt a.dload').attr('href') 
+      || $li.find('.dt a').attr('href')
+      || '';
+    
+    const $ephNum = $li.find('.eph-num');
+    
+    if ($ephNum.length > 0) {
+      const $chapternumSpans = $ephNum.find('.chapternum');
+      if ($chapternumSpans.length > 0) {
+        titleText = $chapternumSpans.first().text().trim();
+      }
+      dateRaw = $ephNum.find('.chapterdate').text().trim()
+        || $ephNum.find('.chapter-date').text().trim()
+        || '';
+      if (newHref) {
+        href = newHref;
+      }
+    }
+
+    if (!href) {
+      href = $li.find('.lchx a').attr('href') 
+        || $li.find('a').attr('href') 
+        || '';
+    }
+    if (!titleText) {
+      titleText = $li.find('.dt').text().trim() 
+        || $li.find('.lchx a').text().trim() 
+        || '';
+    }
+    if (!dateRaw) {
+      dateRaw = $li.find('.chapter-date').text().trim() 
+        || $li.find('.date').text().trim()
+        || '';
+    }
+    
+    if (!href) return;
+
+    const chapterUrlMatch = href.match(/\/capitulo\/\d+\/([^\/]+)/);
+    const numberFromUrl = chapterUrlMatch?.[1] ?? '';
+
+    const number = extractChapterNumber(numberFromUrl || titleText);
+
+    const date = parseSiteDate(dateRaw);
+
+    const mangaFromChapter = extractMangaFromUrl(href);
+    const mangaId = mangaFromChapter?.id ?? 0;
+
+    const chapterUrl = href.startsWith('http') ? href : `${BASE_URL}${href}`;
+
+    const hash = extractHash(href);
+    const scanlator = extractScanlator($li);
+
+    chapters.push({
+      id: mangaId,
+      number: number || numberFromUrl || '0',
+      title: titleText,
+      date,
+      url: chapterUrl,
+      hash,
+      scanlator,
     });
   });
 

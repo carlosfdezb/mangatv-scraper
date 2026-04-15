@@ -4,18 +4,23 @@
  */
 
 import * as cheerio from 'cheerio';
-import type { MangaDetail, MangaType, Demographic, Genre } from '../../types/manga.js';
+import type { MangaDetail, MangaType, Demographic, Genre, MangaDetailOptions } from '../../types/manga.js';
 import { BASE_URL } from '../../constants/index.js';
 import { extractMangaFromUrl, normalizeMangaType } from '../../utils/helpers.js';
-import { parseChaptersFromDetail } from './chapter-parser.js';
+import { parseChaptersFromDetail, parseChaptersFromDetailWithMeta, groupChapterVersions } from './chapter-parser.js';
 
 /**
  * Parse manga detail page
  * @param html - Raw HTML string from detail page
  * @param url - URL of the detail page
+ * @param options - Optional parsing options for chapter processing
  * @returns Parsed MangaDetail object
  */
-export function parseMangaDetail(html: string, url: string): MangaDetail {
+export function parseMangaDetail(
+  html: string, 
+  url: string,
+  options?: MangaDetailOptions
+): MangaDetail {
   const $ = cheerio.load(html);
 
   // Extract manga ID and slug from URL
@@ -152,7 +157,27 @@ export function parseMangaDetail(html: string, url: string): MangaDetail {
     (hasOldStructure && $('.bigcontent .infox .spe .type').text().includes('+18'));
 
   // Parse chapters from .bxcl ul li
-  const chapters = parseChaptersFromDetail($.html());
+  // Apply grouping and ordering based on options
+  let chapters;
+  if (options?.groupVersions || options?.order === 'asc') {
+    // Use the version-aware parser
+    const parsedChapters = parseChaptersFromDetailWithMeta($.html());
+    
+    // Group if requested
+    let processedChapters = options.groupVersions 
+      ? groupChapterVersions(parsedChapters)
+      : parsedChapters;
+    
+    // Order if ASC (reverse from DESC site order)
+    if (options.order === 'asc') {
+      processedChapters = [...processedChapters].reverse();
+    }
+    
+    chapters = processedChapters;
+  } else {
+    // Default behavior - no grouping, no ordering (DESC site order)
+    chapters = parseChaptersFromDetail($.html());
+  }
 
   // Full URL - use slug if available, otherwise omit
   const mangaUrl = slug && slug !== '-' 

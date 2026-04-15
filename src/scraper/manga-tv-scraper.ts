@@ -14,6 +14,7 @@ import type {
   MangaDetail,
   PaginatedResult,
   ChapterPages,
+  MangaDetailOptions,
 } from '../types/index.js';
 import { ScraperError } from '../types/scraper.js';
 
@@ -140,9 +141,14 @@ export class MangaTVScraper {
    * Get manga details by ID and slug
    * @param id - Manga ID
    * @param slug - Manga slug (optional, inferred from URL if not provided)
+   * @param options - Optional settings for chapter ordering and grouping
    * @returns Full manga details
    */
-  async getMangaDetail(id: number, slug?: string): Promise<MangaDetail> {
+  async getMangaDetail(
+    id: number, 
+    slug?: string,
+    options?: MangaDetailOptions
+  ): Promise<MangaDetail> {
     if (!id || id <= 0) {
       throw new ScraperError(`Invalid manga ID: ${id}`, '');
     }
@@ -151,7 +157,7 @@ export class MangaTVScraper {
 
     try {
       const html = await this.fetchHtml(url);
-      return parseMangaDetail(html, url);
+      return parseMangaDetail(html, url, options);
     } catch (error) {
       if (error instanceof ScraperError) throw error;
       // Check if it's a 404
@@ -168,9 +174,13 @@ export class MangaTVScraper {
   /**
    * Get manga details by full URL
    * @param url - Full manga detail page URL
+   * @param options - Optional settings for chapter ordering and grouping
    * @returns Full manga details
    */
-  async getMangaDetailByUrl(url: string): Promise<MangaDetail> {
+  async getMangaDetailByUrl(
+    url: string,
+    options?: MangaDetailOptions
+  ): Promise<MangaDetail> {
     if (!url?.trim()) {
       throw new ScraperError('URL cannot be empty', '');
     }
@@ -184,7 +194,7 @@ export class MangaTVScraper {
     const id = parseInt(match[1], 10);
     const slug = match[2];
 
-    return this.getMangaDetail(id, slug);
+    return this.getMangaDetail(id, slug, options);
   }
 
   /**

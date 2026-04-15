@@ -15,6 +15,9 @@ export type {
   SortOrder,
   MangaListFilters,
   PaginatedResult,
+  ChapterOrder,
+  ChapterVersion,
+  MangaDetailOptions,
 } from './manga.js';
 
 export { ScraperError } from './scraper.js';

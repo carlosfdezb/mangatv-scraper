@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { parseChaptersFromDetail, parseChapter, parseChapterPages, canParseChapterPages, canParse } from '../../src/scraper/parsers/chapter-parser.js';
+import { parseChaptersFromDetail, parseChapter, parseChapterPages, canParseChapterPages, canParse, parseChaptersFromDetailWithMeta, groupChapterVersions } from '../../src/scraper/parsers/chapter-parser.js';
 import { ScraperError } from '../../src/types/scraper.js';
 
 const FIXTURES_DIR = join(__dirname, '../fixtures');
@@ -111,6 +111,123 @@ describe('ChapterParser', () => {
       // so extractMangaFromUrl returns null, resulting in id=0
       // This is expected behavior since chapter URLs have different format
       expect(result[0].id).toBe(0);
+    });
+  });
+
+  describe('parseChaptersFromDetailWithMeta', () => {
+    it('should parse chapters from new structure detail page', () => {
+      const html = loadFixture('detail-page-new-structure.html');
+      const result = parseChaptersFromDetailWithMeta(html);
+      
+      expect(result).toHaveLength(3);
+    });
+
+    it('should extract hash from /leer/{hash} URLs', () => {
+      const html = loadFixture('detail-page-new-structure.html');
+      const result = parseChaptersFromDetailWithMeta(html);
+      
+      expect(result[0].hash).toBe('e6f5d166098a42');
+      expect(result[1].hash).toBe('a91307a3ff134b');
+      expect(result[2].hash).toBe('9612a8ff615142');
+    });
+
+    it('should extract scanlator from second .chapternum span', () => {
+      const html = loadFixture('detail-page-new-structure.html');
+      const result = parseChaptersFromDetailWithMeta(html);
+      
+      // The second .chapternum span format is "title | scanlator"
+      // So scanlator is the part after the pipe
+      // First chapter has scanlator info "Yotsuba & La Profesora ZonaTMO | Mistranslated!"
+      expect(result[0].scanlator).toBe('Mistranslated!');
+      // Other chapters also have scanlator info
+      expect(result[1].scanlator).toBe('Mistranslated!');
+      expect(result[2].scanlator).toBe('Snacky Snacks');
+    });
+
+    it('should return empty scanlator when only one chapternum span', () => {
+      const html = loadFixture('detail-page.html');
+      const result = parseChaptersFromDetailWithMeta(html);
+      
+      // Old structure doesn't have second chapternum span
+      expect(result.every(ch => ch.scanlator === '')).toBe(true);
+    });
+
+    it('should return empty hash for /capitulo/ URLs', () => {
+      const html = loadFixture('detail-page.html');
+      const result = parseChaptersFromDetailWithMeta(html);
+      
+      // Old structure uses /capitulo/ not /leer/
+      expect(result.every(ch => ch.hash === '')).toBe(true);
+    });
+  });
+
+  describe('groupChapterVersions', () => {
+    it('should return chapters unchanged when no duplicates', () => {
+      const chapters = [
+        { id: 0, number: '1', title: 'Capítulo 1', date: '2024-01-01', url: 'https://mangatv.net/leer/aaa', hash: 'aaa', scanlator: '' },
+        { id: 0, number: '2', title: 'Capítulo 2', date: '2024-01-02', url: 'https://mangatv.net/leer/bbb', hash: 'bbb', scanlator: '' },
+      ];
+      
+      const result = groupChapterVersions(chapters);
+      
+      expect(result).toHaveLength(2);
+      expect(result[0].versions).toBeUndefined();
+      expect(result[1].versions).toBeUndefined();
+    });
+
+    it('should group chapters with same number', () => {
+      const chapters = [
+        { id: 0, number: '62', title: 'Capítulo 62', date: '2025-03-17', url: 'https://mangatv.net/leer/abc', hash: 'abc', scanlator: 'ZonaTMO' },
+        { id: 0, number: '62', title: 'Capítulo 62', date: '2025-03-15', url: 'https://mangatv.net/leer/def', hash: 'def', scanlator: 'CowboyBebop' },
+        { id: 0, number: '62', title: 'Capítulo 62', date: '2025-03-10', url: 'https://mangatv.net/leer/ghi', hash: 'ghi', scanlator: '' },
+      ];
+      
+      const result = groupChapterVersions(chapters);
+      
+      expect(result).toHaveLength(1);
+      expect(result[0].number).toBe('62');
+      expect(result[0].versions).toHaveLength(2);
+    });
+
+    it('should use latest date as primary chapter date', () => {
+      const chapters = [
+        { id: 0, number: '62', title: 'Capítulo 62', date: '2025-03-15', url: 'https://mangatv.net/leer/abc', hash: 'abc', scanlator: 'Old' },
+        { id: 0, number: '62', title: 'Capítulo 62', date: '2025-03-17', url: 'https://mangatv.net/leer/def', hash: 'def', scanlator: 'New' },
+      ];
+      
+      const result = groupChapterVersions(chapters);
+      
+      expect(result[0].date).toBe('2025-03-17');
+      expect(result[0].url).toBe('https://mangatv.net/leer/def');
+    });
+
+    it('should preserve version metadata in versions array', () => {
+      const chapters = [
+        { id: 0, number: '10', title: 'Capítulo 10', date: '2025-01-01', url: 'https://mangatv.net/leer/aaa', hash: 'aaa', scanlator: 'GroupA' },
+        { id: 0, number: '10', title: 'Capítulo 10', date: '2025-01-02', url: 'https://mangatv.net/leer/bbb', hash: 'bbb', scanlator: 'GroupB' },
+      ];
+      
+      const result = groupChapterVersions(chapters);
+      
+      expect(result[0].versions).toBeDefined();
+      expect(result[0].versions).toHaveLength(1);
+      expect(result[0].versions![0].url).toBe('https://mangatv.net/leer/aaa');
+      expect(result[0].versions![0].hash).toBe('aaa');
+      expect(result[0].versions![0].scanlator).toBe('GroupA');
+      expect(result[0].versions![0].date).toBe('2025-01-01');
+    });
+
+    it('should handle decimal chapter numbers', () => {
+      const chapters = [
+        { id: 0, number: '42.5', title: 'Capítulo 42.5', date: '2025-01-01', url: 'https://mangatv.net/leer/aaa', hash: 'aaa', scanlator: '' },
+        { id: 0, number: '42.5', title: 'Capítulo 42.5', date: '2025-01-02', url: 'https://mangatv.net/leer/bbb', hash: 'bbb', scanlator: 'Other' },
+      ];
+      
+      const result = groupChapterVersions(chapters);
+      
+      expect(result).toHaveLength(1);
+      expect(result[0].number).toBe('42.5');
+      expect(result[0].versions).toHaveLength(1);
     });
   });
 

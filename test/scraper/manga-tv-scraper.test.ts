@@ -329,6 +329,72 @@ describe('MangaTVScraper', () => {
     });
   });
 
+  describe('getMangaDetail - options', () => {
+    it('should accept options parameter without error', async () => {
+      const html = loadFixture('detail-page.html');
+      mockGet.mockResolvedValue({
+        data: html,
+        status: 200,
+        headers: {},
+        url: 'https://mangatv.net/manga/36031/peque-o-hongo',
+      });
+
+      const result = await scraper.getMangaDetail(36031, 'peque-o-hongo', {});
+      
+      expect(result.id).toBe(36031);
+    });
+
+    it('should pass options to parser', async () => {
+      const html = loadFixture('detail-page-new-structure.html');
+      mockGet.mockResolvedValue({
+        data: html,
+        status: 200,
+        headers: {},
+        url: 'https://mangatv.net/manga/1234/yotsuba',
+      });
+
+      const result = await scraper.getMangaDetail(1234, 'yotsuba', { order: 'asc' });
+      
+      // ASC order: oldest first
+      expect(result.chapters[0].number).toBe('120');
+      expect(result.chapters[2].number).toBe('122');
+    });
+
+    it('should group chapter versions when groupVersions is true', async () => {
+      const html = loadFixture('detail-page-versions.html');
+      mockGet.mockResolvedValue({
+        data: html,
+        status: 200,
+        headers: {},
+        url: 'https://mangatv.net/manga/1234/manga-versiones',
+      });
+
+      const result = await scraper.getMangaDetail(1234, 'manga-versiones', { groupVersions: true });
+      
+      // Should be grouped: 62 (2), 61 (1), 60 (3), 1 (1) = 4 total
+      expect(result.chapters).toHaveLength(4);
+    });
+
+    it('should combine order and groupVersions options', async () => {
+      const html = loadFixture('detail-page-versions.html');
+      mockGet.mockResolvedValue({
+        data: html,
+        status: 200,
+        headers: {},
+        url: 'https://mangatv.net/manga/1234/manga-versiones',
+      });
+
+      const result = await scraper.getMangaDetail(1234, 'manga-versiones', { 
+        order: 'asc', 
+        groupVersions: true 
+      });
+      
+      // Grouped and ordered ASC
+      expect(result.chapters[0].number).toBe('1');
+      expect(result.chapters[3].number).toBe('62');
+    });
+  });
+
   describe('getMangaDetailByUrl', () => {
     it('should fetch manga detail by URL', async () => {
       const html = loadFixture('detail-page.html');

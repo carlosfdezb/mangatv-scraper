@@ -82,6 +82,37 @@ export interface Chapter {
   date: string;
   /** Full URL to the chapter */
   url: string;
+  /** Alternate scanlation versions (present only when groupVersions: true) */
+  versions?: readonly ChapterVersion[];
+}
+
+/**
+ * Chapter sort order
+ */
+export type ChapterOrder = 'asc' | 'desc';
+
+/**
+ * Alternate version of a chapter (different scanlation)
+ */
+export interface ChapterVersion {
+  /** Chapter URL (/leer/{hash} format) */
+  readonly url: string;
+  /** Chapter hash from URL */
+  readonly hash?: string;
+  /** Scanlation group name */
+  readonly scanlator?: string;
+  /** Chapter release date */
+  readonly date?: string;
+}
+
+/**
+ * Options for getMangaDetail
+ */
+export interface MangaDetailOptions {
+  /** Chapter order direction. Default: 'desc' (newest first) */
+  readonly order?: ChapterOrder;
+  /** Whether to group chapter versions. Default: false */
+  readonly groupVersions?: boolean;
 }
 
 /**
