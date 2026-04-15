@@ -17,14 +17,28 @@ export function parseChaptersFromDetail(html: string): Chapter[] {
   const $ = cheerio.load(html);
   const chapters: Chapter[] = [];
 
-  // Chapter container: .bxcl ul li
-  const $chapterList = $('.bxcl ul');
+  // NEW site structure: .bixbox.bxcl .s li (or .bxcl .s li)
+  // The chapter list is in .bxcl with a .s div containing <li> elements directly
+  // OLD structure: .bxcl ul li
+  const $chapterList = $('.bxcl ul li');
   
-  if ($chapterList.length === 0) {
+  // If no chapters found with old structure, try new structure
+  // In new structure, <li> elements are directly inside .s (not wrapped in <ul>)
+  let $liElements = $chapterList;
+  if ($liElements.length === 0) {
+    // New structure: .bxcl .s > li or .bixbox.bxcl .s > li
+    $liElements = $('.bxcl .s > li');
+  }
+  if ($liElements.length === 0) {
+    // Try even more permissive: any li directly under .bxcl
+    $liElements = $('li', '.bxcl');
+  }
+  
+  if ($liElements.length === 0) {
     return chapters;
   }
 
-  $chapterList.find('li').each((_, li) => {
+  $liElements.each((_, li) => {
     const $li = $(li);
 
     // Skip "no chapters" placeholder
@@ -32,32 +46,65 @@ export function parseChaptersFromDetail(html: string): Chapter[] {
       return;
     }
 
-    // Chapter URL from .lchx a href
-    const href = $li.find('.lchx a').attr('href') 
-      || $li.find('a').attr('href') 
+    // Try NEW structure selectors first (.eph-num, .chapterdate, .dt a.dload)
+    // Then fall back to OLD structure (.lchx, .chapter-date, .lchx a)
+    let href = '';
+    let titleText = '';
+    let dateRaw = '';
+
+    // NEW structure: URL is in .dt a.dload (or just .dt a)
+    const newHref = $li.find('.dt a.dload').attr('href') 
+      || $li.find('.dt a').attr('href')
       || '';
+    
+    // NEW structure: chapter info is in .eph-num
+    const $ephNum = $li.find('.eph-num');
+    
+    if ($ephNum.length > 0) {
+      // NEW structure: multiple .chapternum spans, first has "Capítulo X", rest have subtitle
+      const $chapternumSpans = $ephNum.find('.chapternum');
+      if ($chapternumSpans.length > 0) {
+        // First span has main chapter info
+        titleText = $chapternumSpans.first().text().trim();
+        // Subsequent spans may have additional info like translator
+      }
+      // NEW structure: date is in .chapterdate (note: no hyphen)
+      dateRaw = $ephNum.find('.chapterdate').text().trim()
+        || $ephNum.find('.chapter-date').text().trim()
+        || '';
+    }
+
+    // OLD structure fallbacks
+    if (!href) {
+      href = $li.find('.lchx a').attr('href') 
+        || $li.find('a').attr('href') 
+        || '';
+    }
+    if (!titleText) {
+      titleText = $li.find('.dt').text().trim() 
+        || $li.find('.lchx a').text().trim() 
+        || '';
+    }
+    if (!dateRaw) {
+      dateRaw = $li.find('.chapter-date').text().trim() 
+        || $li.find('.date').text().trim()
+        || '';
+    }
     
     if (!href) return;
 
-    // Extract chapter number from URL path like /capitulo/36031/45 -> "45"
+    // For NEW structure (/leer/{hash}), we can't extract chapter number from URL
+    // For OLD structure (/capitulo/36031/45), we can extract from URL
     const chapterUrlMatch = href.match(/\/capitulo\/\d+\/([^\/]+)/);
     const numberFromUrl = chapterUrlMatch?.[1] ?? '';
 
-    // Chapter title from .dt text (e.g., "Capítulo 45")
-    const titleText = $li.find('.dt').text().trim() 
-      || $li.find('.lchx a').text().trim() 
-      || '';
-
-    // Extract chapter number using helper
+    // Extract chapter number using helper (handles "Capítulo 45" format)
     const number = extractChapterNumber(numberFromUrl || titleText);
 
-    // Chapter date from .chapter-date
-    const dateRaw = $li.find('.chapter-date').text().trim() 
-      || $li.find('.date').text().trim()
-      || '';
+    // Parse the date
     const date = parseSiteDate(dateRaw);
 
-    // Extract manga ID from chapter URL if possible (for completeness)
+    // Extract manga ID from chapter URL if possible
     const mangaFromChapter = extractMangaFromUrl(href);
     const mangaId = mangaFromChapter?.id ?? 0;
 
@@ -65,7 +112,7 @@ export function parseChaptersFromDetail(html: string): Chapter[] {
     const chapterUrl = href.startsWith('http') ? href : `${BASE_URL}${href}`;
 
     chapters.push({
-      id: mangaId, // Using mangaId as chapter identifier (no separate chapter ID in URL)
+      id: mangaId,
       number: number || numberFromUrl || '0',
       title: titleText,
       date,
