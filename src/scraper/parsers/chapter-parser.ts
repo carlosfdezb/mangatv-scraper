@@ -424,43 +424,65 @@ function extractChapterHash(url: string): string | undefined {
 }
 
 /**
+ * Extract base64-encoded image URLs from packed JavaScript
+ * The site uses Dean Edwards packer format: eval(function(p,a,c,k,e,d){...}('data',56,56,'keys'))
+ * @param html - Raw HTML string from chapter page
+ * @returns Pipe-separated base64 string or empty string
+ */
+function extractFromPackedScript(html: string): string {
+  // Find script tags with eval(function...) packed content
+  // Use [\s\S]*? to match any character including newlines
+  const packedRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+  const matches = html.match(packedRegex);
+
+  if (!matches || matches.length === 0) {
+    return '';
+  }
+
+  for (const script of matches) {
+    // Extract the base64 image URLs from the packed script
+    // Look for Ly9pbWc... pattern (base64 of //img)
+    const base64Pattern = /Ly9pbWc[A-Za-z0-9+/=|]+/g;
+    const urlMatches = script.match(base64Pattern);
+
+    if (urlMatches && urlMatches.length > 0) {
+      return urlMatches.join('|');
+    }
+  }
+
+  return '';
+}
+
+/**
  * Parse chapter pages from chapter page HTML
  * Extracts image URLs from packed ts_reader JavaScript variable
  * @param html - Raw HTML string from chapter page
  * @param url - URL of the chapter page
  * @returns ChapterPages with all decoded image URLs
- * @throws {ScraperError} When ts_reader is missing or no valid images found
+ * @throws {ScraperError} When image data is missing or no valid images found
  */
 export function parseChapterPages(html: string, url: string): ChapterPages {
-  // Find script containing ts_reader.run
-  const scriptRegex = /<script[^>]*>[\s\S]*?ts_reader\.run[\s\S]*?<\/script>/gi;
-  const scriptMatch = html.match(scriptRegex);
+  // Try to find base64-encoded image URLs in the HTML
+  // The site uses JavaScript packer format, so we look for Ly9pbWc pattern
   
-  if (!scriptMatch || scriptMatch.length === 0) {
-    throw new ScraperError(
-      'Failed to extract chapter content: ts_reader variable not found in page HTML',
-      url,
-      undefined,
-      false
-    );
-  }
+  // First, try the packed script approach (current site format)
+  let encodedString = extractFromPackedScript(html);
   
-  // Extract the base64-encoded portion from ts_reader.run call
-  // The pattern starts with Ly9pbWc (base64 encoded "//img")
-  const base64Regex = /Ly9pbWc[\w+/=|]+/g;
-  
-  let encodedString: string | undefined;
-  for (const script of scriptMatch) {
-    const match = script.match(base64Regex);
-    if (match && match[0]) {
-      encodedString = match[0];
-      break;
+  // Fallback: try finding ts_reader.run with direct base64 (old format)
+  if (!encodedString) {
+    const scriptRegex = /ts_reader\.run\s*\(\s*\{[\s\S]*?ts_urs\s*:\s*['"]([^'"]+)['"]/gi;
+    const scriptMatch = html.match(scriptRegex);
+    if (scriptMatch && scriptMatch[0]) {
+      const match = scriptMatch[0].match(/ts_urs\s*:\s*['"]([^'"]+)['"]/);
+      if (match && match[1]) {
+        encodedString = match[1];
+      }
     }
   }
   
   if (!encodedString) {
     throw new ScraperError(
-      'Failed to extract chapter content: could not find base64-encoded image data',
+      'Failed to extract chapter content: ts_reader variable not found in page HTML',
       url,
       undefined,
       false
@@ -472,12 +494,15 @@ export function parseChapterPages(html: string, url: string): ChapterPages {
   const decodedUrls: string[] = [];
   
   for (const part of parts) {
+    if (!part || part.length < 10) continue; // Skip empty or too-short strings
+    
     try {
       const decoded = Buffer.from(part, 'base64').toString('utf-8');
-      decodedUrls.push(decoded);
+      if (decoded.startsWith('//img')) {
+        decodedUrls.push(decoded);
+      }
     } catch {
       // Skip parts that fail to decode
-      console.warn(`Warning: Failed to decode base64 part, skipping: ${part.substring(0, 20)}...`);
     }
   }
   

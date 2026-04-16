@@ -502,8 +502,8 @@ describe('MangaTVScraper', () => {
 
       const result = await scraper.getChapterPages('https://mangatv.net/leer/b35a0970901f4f');
 
-      expect(result.pages).toHaveLength(5);
-      expect(result.totalPages).toBe(5);
+      expect(result.pages).toHaveLength(18);
+      expect(result.totalPages).toBe(18);
       expect(result.chapterHash).toBe('b35a0970901f4f');
       expect(result.prevChapterUrl).toBeDefined();
       expect(result.nextChapterUrl).toBeDefined();
@@ -520,8 +520,8 @@ describe('MangaTVScraper', () => {
 
       const result = await scraper.getChapterPages('https://mangatv.net/capitulo/36031/65');
 
-      expect(result.pages).toHaveLength(5);
-      expect(result.totalPages).toBe(5);
+      expect(result.pages).toHaveLength(18);
+      expect(result.totalPages).toBe(18);
       expect(result.chapterHash).toBeUndefined();
     });
 
