@@ -128,7 +128,11 @@ export interface ChapterPage {
 }
 
 /**
- * Represents all pages in a chapter with navigation
+ * Represents all pages in a chapter with navigation.
+ * 
+ * **CDN Access**: Image URLs require a `Referer: https://mangatv.net/` header
+ * to bypass Cloudflare anti-hotlink protection. Use `getCdnImageHeaders()` 
+ * to get the required headers.
  */
 export interface ChapterPages {
   /** Source chapter URL */

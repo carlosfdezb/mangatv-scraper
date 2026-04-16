@@ -18,8 +18,9 @@ import {
   sleep,
   chunkArray,
   deduplicateByKey,
+  getCdnImageHeaders,
 } from '../../src/utils/helpers.js';
-import { SORT_ORDERS } from '../../src/constants/index.js';
+import { SORT_ORDERS, CDN_HEADERS } from '../../src/constants/index.js';
 
 describe('Helpers', () => {
   describe('extractMangaFromUrl', () => {
@@ -391,6 +392,26 @@ describe('Helpers', () => {
       const items = [{ id: 1, name: 'a' }, { id: 1, name: 'b' }];
       const result = deduplicateByKey(items, item => item.id);
       expect(result[0].name).toBe('a');
+    });
+  });
+
+  describe('getCdnImageHeaders', () => {
+    it('should return an object with Referer header', () => {
+      const headers = getCdnImageHeaders();
+      expect(headers).toHaveProperty('Referer');
+      expect(headers.Referer).toBe('https://mangatv.net/');
+    });
+
+    it('should return the same headers object each time', () => {
+      const headers1 = getCdnImageHeaders();
+      const headers2 = getCdnImageHeaders();
+      expect(headers1).toBe(headers2);
+    });
+  });
+
+  describe('CDN_HEADERS', () => {
+    it('should have Referer set to mangatv.net URL', () => {
+      expect(CDN_HEADERS.Referer).toBe('https://mangatv.net/');
     });
   });
 });

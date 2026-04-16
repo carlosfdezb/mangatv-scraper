@@ -56,6 +56,7 @@ export {
   isValidGenre,
   isValidMangaType,
   isValidDemographic,
+  CDN_HEADERS,
 } from './constants/index.js';
 
 // Scraper
@@ -92,4 +93,5 @@ export {
   safeJsonParse,
   chunkArray,
   deduplicateByKey,
+  getCdnImageHeaders,
 } from './utils/index.js';

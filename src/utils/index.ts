@@ -19,4 +19,7 @@ export {
   extractChapterNumber,
   normalizeMangaType,
   buildListUrl,
+  getCdnImageHeaders,
 } from './helpers.js';
+
+export { CDN_HEADERS } from '../constants/index.js';

@@ -3,7 +3,7 @@
  * @module utils/helpers
  */
 
-import { BASE_URL, PATHS, SORT_ORDERS } from '../constants/index.js';
+import { BASE_URL, PATHS, SORT_ORDERS, CDN_HEADERS } from '../constants/index.js';
 import type { MangaListFilters } from '../types/manga.js';
 
 /**
@@ -310,4 +310,13 @@ export function buildListUrl(filters?: MangaListFilters, page?: number): string 
 
   const queryString = params.toString();
   return queryString ? `${BASE_URL}${PATHS.LIST}?${queryString}` : `${BASE_URL}${PATHS.LIST}`;
+}
+
+/**
+ * Returns the required HTTP headers for accessing mangatv.net CDN images.
+ * CDN images require a Referer header to bypass Cloudflare anti-hotlink protection.
+ * @returns Headers object with Referer set
+ */
+export function getCdnImageHeaders(): Readonly<Record<string, string>> {
+  return CDN_HEADERS;
 }
