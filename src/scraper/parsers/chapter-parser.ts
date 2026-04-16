@@ -521,7 +521,10 @@ export function parseChapterPages(html: string, url: string): ChapterPages {
   
   // Normalize protocol-relative URLs to https://
   const normalizedUrls = imageUrls.map(u => u.replace(/^\/\//, 'https://'));
-  
+
+  // Reverse to get correct reading order (packed JS stores pages in reverse)
+  normalizedUrls.reverse();
+
   // Extract format from URL (webp or jpg)
   const extractFormat = (urlString: string): 'webp' | 'jpg' => {
     if (urlString.includes('.webp')) return 'webp';
