@@ -1,5 +1,7 @@
 # mangatv-scraper
 
+[![npm version](https://img.shields.io/npm/v/mangatv-scraper)](https://www.npmjs.com/package/mangatv-scraper) [![npm downloads](https://img.shields.io/npm/dm/mangatv-scraper)](https://www.npmjs.com/package/mangatv-scraper) [![license](https://img.shields.io/npm/l/mangatv-scraper)](https://www.npmjs.com/package/mangatv-scraper) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)](https://www.typescriptlang.org/) [![node version](https://img.shields.io/node/v/mangatv-scraper)](https://www.npmjs.com/package/mangatv-scraper)
+
 TypeScript scraper for [mangatv.net](https://mangatv.net/) with support for manga listings, search, detail pages, latest updates, random manga, and chapter page extraction.
 
 This package is intended for Node.js or backend usage. It is not an official MangaTV API.
