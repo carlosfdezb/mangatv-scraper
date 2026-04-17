@@ -11,10 +11,16 @@ import { ScraperError } from '../../types/scraper.js';
 
 /**
  * Internal intermediate type for parsed chapters before grouping.
- * Extends Chapter with hash and scanlator extracted during parsing.
+ * Extends Chapter with hash, scanlator, and rawDate for building versions.
  * Not exported - only used internally.
  */
-interface ParsedChapter extends Chapter {
+interface ParsedChapter {
+  /** Chapter number */
+  number: string;
+  /** Chapter title */
+  title: string;
+  /** Raw date string for sorting/grouping purposes */
+  rawDate: string;
   /** Hash extracted from /leer/{hash} URL segment */
   hash: string;
   /** Scanlator from second .chapternum span */
@@ -43,44 +49,28 @@ export function groupChapterVersions(chapters: ParsedChapter[]): Chapter[] {
   const result: Chapter[] = [];
 
   for (const [, chapterList] of grouped) {
-    if (chapterList.length === 1) {
-      // Single version - no grouping needed, include no versions field
-      const ch = chapterList[0];
-      if (!ch) continue;
-      result.push({
-        id: ch.id,
-        number: ch.number,
-        title: ch.title,
-        date: ch.date,
-        url: ch.url,
-      });
-    } else {
-      // Multiple versions - group them
-      // Sort by date descending to get the latest as primary
-      const sorted = [...chapterList].sort((a, b) => {
-        const dateA = new Date(a.date).getTime() || 0;
-        const dateB = new Date(b.date).getTime() || 0;
-        return dateB - dateA;
-      });
+    // Sort by date descending to get the latest as primary
+    const sorted = [...chapterList].sort((a, b) => {
+      const dateA = new Date(a.rawDate).getTime() || 0;
+      const dateB = new Date(b.rawDate).getTime() || 0;
+      return dateB - dateA;
+    });
 
-      const primary = sorted[0];
-      if (!primary) continue;
-      const versions = sorted.slice(1).map(ch => ({
-        url: ch.url,
-        hash: ch.hash || undefined,
-        scanlator: ch.scanlator || undefined,
-        date: ch.date,
-      }));
+    const primary = sorted[0];
+    if (!primary) continue;
 
-      result.push({
-        id: primary.id,
-        number: primary.number,
-        title: primary.title,
-        date: primary.date,
-        url: primary.url,
-        versions: versions,
-      });
-    }
+    // Build versions array from all sorted chapters
+    const versions = sorted.map(ch => ({
+      hash: ch.hash || '',
+      scanlator: ch.scanlator || '',
+      date: ch.rawDate,
+    }));
+
+    result.push({
+      number: primary.number,
+      title: primary.title,
+      versions: versions,
+    });
   }
 
   return result;
@@ -89,11 +79,13 @@ export function groupChapterVersions(chapters: ParsedChapter[]): Chapter[] {
 /**
  * Parse chapter list from detail page HTML
  * @param html - Raw HTML string from detail page
+ * @param mangaId - Optional manga ID from parent detail page (for /leer/ URLs that don't contain manga ID)
  * @param options - Optional parsing options (for future use)
  * @returns Array of parsed Chapter objects
  */
 export function parseChaptersFromDetail(
   html: string,
+  mangaId?: number,
   options?: { extractVersions?: boolean }
 ): Chapter[] {
   const $ = cheerio.load(html);
@@ -188,17 +180,19 @@ export function parseChaptersFromDetail(
 
     // Extract manga ID from chapter URL if possible
     const mangaFromChapter = extractMangaFromUrl(href);
-    const mangaId = mangaFromChapter?.id ?? 0;
+    const chapterId = mangaId ?? mangaFromChapter?.id ?? 0;
 
     // Full chapter URL
     const chapterUrl = href.startsWith('http') ? href : `${BASE_URL}${href}`;
 
     chapters.push({
-      id: mangaId,
       number: number || numberFromUrl || '0',
       title: titleText,
-      date,
-      url: chapterUrl,
+      versions: [{
+        hash: '',
+        scanlator: '',
+        date,
+      }],
     });
   });
 
@@ -209,9 +203,13 @@ export function parseChaptersFromDetail(
  * Parse chapter list from detail page HTML with full metadata extraction.
  * Returns internal ParsedChapter[] for use in grouping/ordering pipeline.
  * @param html - Raw HTML string from detail page
+ * @param mangaId - Optional manga ID from parent detail page (for /leer/ URLs that don't contain manga ID)
  * @returns Array of parsed chapters with hash and scanlator
  */
-export function parseChaptersFromDetailWithMeta(html: string): ParsedChapter[] {
+export function parseChaptersFromDetailWithMeta(
+  html: string,
+  mangaId?: number
+): ParsedChapter[] {
   const $ = cheerio.load(html);
   const chapters: ParsedChapter[] = [];
 
@@ -314,7 +312,7 @@ export function parseChaptersFromDetailWithMeta(html: string): ParsedChapter[] {
     const date = parseSiteDate(dateRaw);
 
     const mangaFromChapter = extractMangaFromUrl(href);
-    const mangaId = mangaFromChapter?.id ?? 0;
+    const chapterId = mangaId ?? mangaFromChapter?.id ?? 0;
 
     const chapterUrl = href.startsWith('http') ? href : `${BASE_URL}${href}`;
 
@@ -322,11 +320,9 @@ export function parseChaptersFromDetailWithMeta(html: string): ParsedChapter[] {
     const scanlator = extractScanlator($li);
 
     chapters.push({
-      id: mangaId,
       number: number || numberFromUrl || '0',
       title: titleText,
-      date,
-      url: chapterUrl,
+      rawDate: date,
       hash,
       scanlator,
     });
@@ -344,9 +340,8 @@ export function parseChaptersFromDetailWithMeta(html: string): ParsedChapter[] {
 export function parseChapter(html: string, url: string): Chapter {
   const $ = cheerio.load(html);
 
-  // Extract chapter ID from URL like /capitulo/12345/45
+  // Extract chapter number from URL like /capitulo/12345/45
   const urlMatch = url.match(/\/capitulo\/(\d+)\/([^\/]+)/);
-  const id = urlMatch?.[1] ? parseInt(urlMatch[1], 10) : 0;
   const pathNumber = urlMatch?.[2] ?? '';
 
   // Try multiple selectors for chapter info container
@@ -381,14 +376,18 @@ export function parseChapter(html: string, url: string): Chapter {
   const dateRaw = $content.find('.date, [class*="date"]').first().text().trim() || '';
   const date = parseSiteDate(dateRaw);
 
-  const chapterUrl = url.startsWith('http') ? url : `${BASE_URL}${url}`;
+  // Extract hash from URL
+  const hashMatch = url.match(/\/leer\/([\w]+)/);
+  const hash = hashMatch?.[1] ?? '';
 
   return {
-    id,
     number,
     title,
-    date,
-    url: chapterUrl,
+    versions: [{
+      hash,
+      scanlator: '',
+      date,
+    }],
   };
 }
 
@@ -408,19 +407,6 @@ export function canParse(url: string): boolean {
  */
 export function canParseChapterPages(url: string): boolean {
   return /\/leer\/[\w]+/.test(url) || /\/capitulo\/\d+\/[^/?#]+/.test(url);
-}
-
-/**
- * Extract chapter hash from /leer/ URL
- * @param url - Chapter URL
- * @returns Chapter hash or undefined
- */
-function extractChapterHash(url: string): string | undefined {
-  const leerMatch = url.match(/\/leer\/([\w]+)/);
-  if (leerMatch?.[1]) {
-    return leerMatch[1];
-  }
-  return undefined;
 }
 
 /**
@@ -457,18 +443,15 @@ function extractFromPackedScript(html: string): string {
  * Parse chapter pages from chapter page HTML
  * Extracts image URLs from packed ts_reader JavaScript variable
  * @param html - Raw HTML string from chapter page
- * @param url - URL of the chapter page
+ * @param hash - Chapter hash (from /leer/{hash} URL)
  * @returns ChapterPages with all decoded image URLs
  * @throws {ScraperError} When image data is missing or no valid images found
  */
-export function parseChapterPages(html: string, url: string): ChapterPages {
-  // Try to find base64-encoded image URLs in the HTML
-  // The site uses JavaScript packer format, so we look for Ly9pbWc pattern
-  
-  // First, try the packed script approach (current site format)
+export function parseChapterPages(html: string, hash: string): ChapterPages {
+  const url = `${BASE_URL}/leer/${hash}`;
+
   let encodedString = extractFromPackedScript(html);
   
-  // Fallback: try finding ts_reader.run with direct base64 (old format)
   if (!encodedString) {
     const scriptRegex = /ts_reader\.run\s*\(\s*\{[\s\S]*?ts_urs\s*:\s*['"]([^'"]+)['"]/gi;
     const scriptMatch = html.match(scriptRegex);
@@ -489,12 +472,11 @@ export function parseChapterPages(html: string, url: string): ChapterPages {
     );
   }
   
-  // Split by pipe and decode each part
   const parts = encodedString.split('|');
   const decodedUrls: string[] = [];
   
   for (const part of parts) {
-    if (!part || part.length < 10) continue; // Skip empty or too-short strings
+    if (!part || part.length < 10) continue;
     
     try {
       const decoded = Buffer.from(part, 'base64').toString('utf-8');
@@ -502,13 +484,12 @@ export function parseChapterPages(html: string, url: string): ChapterPages {
         decodedUrls.push(decoded);
       }
     } catch {
-      // Skip parts that fail to decode
+      // skip
     }
   }
   
-  // Filter to only CDN image URLs (matching img{N}.mangatv.net/library/)
   const cdnPattern = /^\/\/img\d+\.mangatv\.net\/library\//;
-  const imageUrls = decodedUrls.filter(url => cdnPattern.test(url));
+  const imageUrls = decodedUrls.filter(u => cdnPattern.test(u));
   
   if (imageUrls.length === 0) {
     throw new ScraperError(
@@ -519,36 +500,27 @@ export function parseChapterPages(html: string, url: string): ChapterPages {
     );
   }
   
-  // Normalize protocol-relative URLs to https://
   const normalizedUrls = imageUrls.map(u => u.replace(/^\/\//, 'https://'));
 
-  // Reverse to get correct reading order (packed JS stores pages in reverse)
   normalizedUrls.reverse();
 
-  // Extract format from URL (webp or jpg)
   const extractFormat = (urlString: string): 'webp' | 'jpg' => {
     if (urlString.includes('.webp')) return 'webp';
     if (urlString.includes('.jpg')) return 'jpg';
     if (urlString.includes('.jpeg')) return 'jpg';
-    return 'webp'; // default to webp
+    return 'webp';
   };
   
-  // Build chapter pages array
   const pages: ChapterPage[] = normalizedUrls.map((imageUrl, index) => ({
     pageNumber: index + 1,
     imageUrl,
     format: extractFormat(imageUrl),
   }));
   
-  // Extract chapter hash from URL if present
-  const chapterHash = extractChapterHash(url);
-  
-  // Try to extract prev/next chapter URLs from navigation links
   const $ = cheerio.load(html);
   let prevChapterUrl: string | undefined;
   let nextChapterUrl: string | undefined;
   
-  // Look for prev/next navigation links
   const navSelectors = [
     '.nav-prev a',
     '.nav-next a',
@@ -556,7 +528,7 @@ export function parseChapterPages(html: string, url: string): ChapterPages {
     '.chapter-nav .next a',
     'a[rel="prev"]',
     'a[rel="next"]',
-    '.p-2 a', // common pagination pattern
+    '.p-2 a',
   ];
   
   for (const selector of navSelectors) {
@@ -574,7 +546,6 @@ export function parseChapterPages(html: string, url: string): ChapterPages {
     }
   }
   
-  // Also check for class-based nav links
   const $allLinks = $('a');
   $allLinks.each((_, el) => {
     const $el = $(el);
@@ -590,8 +561,7 @@ export function parseChapterPages(html: string, url: string): ChapterPages {
   });
   
   return {
-    url,
-    chapterHash,
+    chapterHash: hash,
     totalPages: pages.length,
     pages,
     prevChapterUrl,

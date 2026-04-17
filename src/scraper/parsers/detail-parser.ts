@@ -4,9 +4,9 @@
  */
 
 import * as cheerio from 'cheerio';
-import type { MangaDetail, MangaType, Demographic, Genre, MangaDetailOptions } from '../../types/manga.js';
+import type { MangaDetail, MangaType, Demographic, Genre, MangaDetailOptions, Chapter } from '../../types/manga.js';
 import { BASE_URL } from '../../constants/index.js';
-import { extractMangaFromUrl, normalizeMangaType } from '../../utils/helpers.js';
+import { extractMangaFromUrl, normalizeMangaType, normalizeImageUrl, normalizeStatus } from '../../utils/helpers.js';
 import { parseChaptersFromDetail, parseChaptersFromDetailWithMeta, groupChapterVersions } from './chapter-parser.js';
 
 /**
@@ -23,10 +23,9 @@ export function parseMangaDetail(
 ): MangaDetail {
   const $ = cheerio.load(html);
 
-  // Extract manga ID and slug from URL
+  // Extract manga ID from URL
   const extracted = extractMangaFromUrl(url);
   const id = extracted?.id ?? 0;
-  const slug = extracted?.slug ?? '';
 
   // Check for new site structure (.tsinfo exists) vs old fixture structure (.spe exists)
   const hasNewStructure = $('.tsinfo').length > 0;
@@ -39,10 +38,11 @@ export function parseMangaDetail(
     '';
 
   // Cover: new structure uses .thumbook .thumb img, old uses .infox .cover img
-  const coverUrl = 
+  const coverUrlRaw =
     $('.thumbook .thumb img').attr('src') ||
     $('.bigcontent .infox .cover img').attr('src') ||
-    '';
+    null;
+  const coverUrl = coverUrlRaw ? normalizeImageUrl(coverUrlRaw) : null;
 
   // Type, Status, Demographics - new structure uses .tsinfo .imptdt
   let type: MangaType = 'Manga';
@@ -57,7 +57,8 @@ export function parseMangaDetail(
       const text = $(el).text();
       if (text.includes('Estado')) {
         // "Estado <i>Publicándose</i>" -> "Publicándose"
-        status = $(el).find('i').text().trim() || text.replace('Estado', '').trim();
+        const extractedStatus = $(el).find('i').text().trim() || text.replace('Estado', '').trim();
+        status = normalizeStatus(extractedStatus);
       } else if (text.includes('Tipo')) {
         // "Tipo <a>Manhua</a>" -> "Manhua"
         const typeLink = $(el).find('a');
@@ -80,7 +81,8 @@ export function parseMangaDetail(
     type = normalizeMangaType(typeText);
     
     const statusTextRaw = $spe.find('.status').text().trim();
-    status = statusTextRaw.replace(/^Estado:\s*/i, '').trim();
+    const extractedStatus = statusTextRaw.replace(/^Estado:\s*/i, '').trim();
+    status = normalizeStatus(extractedStatus);
     
     // Demographics can be in .spe .demographic OR in .wd-full .demographic
     const demographicText = 
@@ -92,36 +94,58 @@ export function parseMangaDetail(
   }
 
   // Author and Artist - new structure may not have these, fall back to old or empty
-  let author = '';
-  let artist = '';
+  let author: string | null = null;
+  let artist: string | null = null;
 
   if (hasOldStructure) {
     const $spe = $('.bigcontent .infox .spe');
     const authorTextRaw = $spe.find('.author').text().trim();
-    author = authorTextRaw.replace(/^Autor:\s*/i, '').trim();
+    const authorMatch = authorTextRaw.match(/^Autor:\s*(.+)/);
+    author = authorMatch?.[1]?.trim() || null;
     
     const artistTextRaw = $spe.find('.artist').text().trim();
-    artist = artistTextRaw.replace(/^Artista:\s*/i, '').trim() || author;
+    const artistMatch = artistTextRaw.match(/^Artista:\s*(.+)/);
+    artist = artistMatch?.[1]?.trim() || author; // default to author if artist not found
   }
 
-  // Genres from .mgen a elements (works for both structures)
-  const genreTexts = 
-    $('.wd-full .mgen a, .infox .mgen a').map((_, el) => $(el).text().trim()).get();
+  // Genres: new structure has .wd-full with <b>Generos</b> label (NOT "Título Alternativos" or "Sinonimos")
+  // Old structure has genres directly in .infox .mgen
+  let genreTexts: string[] = [];
+  
+  // Try new structure first: .wd-full containing "Generos" label
+  const newStructureGenres = 
+    $('.wd-full')
+      .filter((_, el) => $(el).find('b').text().includes('Generos'))
+      .find('.mgen a')
+      .map((_, el) => $(el).text().trim())
+      .get();
+  
+  if (newStructureGenres.length > 0) {
+    genreTexts = newStructureGenres;
+  } else {
+    // Fallback to old structure: .infox .mgen a
+    genreTexts = $('.infox .mgen a')
+      .map((_, el) => $(el).text().trim())
+      .get();
+  }
+  
   const genres = genreTexts.filter(t => t.length > 0) as Genre[];
 
   // Description: new structure uses .wd-full containing "Sinopsis", old uses .description
-  let description = '';
+  let description: string | null = null;
   
   if ($('.wd-full b').filter((_, el) => $(el).text().includes('Sinopsis')).length > 0) {
     // New structure: <b>Sinopsis</b><span>text</span>
-    description = $('.wd-full')
+    const descText = $('.wd-full')
       .filter((_, el) => $(el).find('b').text().includes('Sinopsis'))
       .find('span')
       .text()
       .trim();
+    description = descText || null;
   } else {
     // Old structure
-    description = $('.bigcontent .infox .description').text().trim() || '';
+    const descText = $('.bigcontent .infox .description').text().trim();
+    description = descText || null;
   }
 
   // Rating - new structure uses .resultMedia{mangaId} format, old uses .rating .rating-num
@@ -149,8 +173,8 @@ export function parseMangaDetail(
     ratingCount = ratingCountMatch?.[1] ? parseInt(ratingCountMatch[1], 10) : 0;
   }
 
-  // Latest update - not directly available in detail page, use empty string
-  const latestUpdate = '';
+  // Latest update - not directly available in detail page
+  const latestUpdate: string | null = null;
 
   // ERO check: look for .hot class or type containing "+18"
   const isEro = $('.bigcontent .infox .hot').length > 0 || 
@@ -158,35 +182,47 @@ export function parseMangaDetail(
 
   // Parse chapters from .bxcl ul li
   // Apply grouping and ordering based on options
-  let chapters;
-  if (options?.groupVersions || options?.order === 'asc') {
-    // Use the version-aware parser
-    const parsedChapters = parseChaptersFromDetailWithMeta($.html());
-    
-    // Group if requested
-    let processedChapters = options.groupVersions 
-      ? groupChapterVersions(parsedChapters)
-      : parsedChapters;
-    
-    // Order if ASC (reverse from DESC site order)
-    if (options.order === 'asc') {
-      processedChapters = [...processedChapters].reverse();
+  // Always use version-aware parser to extract hash/scanlator (versions is required on Chapter)
+  // Default order is ASC (oldest first), reverse from site's DESC order
+  // Only skip reversal when order is explicitly 'desc'
+  let chapters: Chapter[];
+  if (!options || options.order !== 'desc') {
+    // Use the version-aware parser (always extracts hash/scanlator)
+    const parsedChapters = parseChaptersFromDetailWithMeta($.html(), id);
+
+    if (options?.groupVersions ?? true) {
+      // Group versions if requested (default true)
+      chapters = groupChapterVersions(parsedChapters);
+    } else {
+      // Convert ParsedChapter[] to Chapter[] with single-element versions
+      chapters = parsedChapters.map(ch => ({
+        number: ch.number,
+        title: ch.title,
+        versions: [{
+          hash: ch.hash || '',
+          scanlator: ch.scanlator || '',
+          date: ch.rawDate,
+        }],
+      }));
     }
-    
-    chapters = processedChapters;
+
+    // Reverse for ASC order (site order is DESC)
+    // Default is ASC when no options or order is 'asc' or order is undefined
+    // Only skip reversal when order is explicitly 'desc'
+    if (!options || options.order !== 'desc') {
+      chapters = [...chapters].reverse();
+    }
+    // If order is 'desc', keep natural DESC order (no reversal)
   } else {
-    // Default behavior - no grouping, no ordering (DESC site order)
-    chapters = parseChaptersFromDetail($.html());
+    // Explicit order: 'desc' - use simpler parser, no grouping, no ordering
+    chapters = parseChaptersFromDetail($.html(), id);
   }
 
-  // Full URL - use slug if available, otherwise omit
-  const mangaUrl = slug && slug !== '-' 
-    ? `${BASE_URL}/manga/${id}/${slug}` 
-    : `${BASE_URL}/manga/${id}/`;
+  // Full URL - ID-only format
+  const mangaUrl = `${BASE_URL}/manga/${id}/`;
 
   return {
     id,
-    slug,
     title,
     type,
     coverUrl,

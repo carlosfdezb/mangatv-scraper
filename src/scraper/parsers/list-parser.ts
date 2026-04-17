@@ -6,7 +6,7 @@
 import * as cheerio from 'cheerio';
 import type { Manga, MangaListFilters, PaginatedResult, MangaType } from '../../types/manga.js';
 import { BASE_URL, PATHS, SORT_ORDERS } from '../../constants/index.js';
-import { extractMangaFromUrl, parseRatingFromRel, normalizeMangaType, parseSiteDate } from '../../utils/helpers.js';
+import { extractMangaFromUrl, parseRatingFromRel, normalizeMangaType, parseSiteDate, normalizeImageUrl } from '../../utils/helpers.js';
 
 /**
  * Parse manga items from list HTML
@@ -29,12 +29,12 @@ export function parseMangaList(html: string): Manga[] {
     const $el = $(element);
     const $bsx = $el; // The anchor is the .bsx element in this structure
 
-    // href -> extract id and slug
+    // href -> extract id
     const href = $bsx.attr('href') ?? '';
     const extracted = extractMangaFromUrl(href);
     if (!extracted) return;
 
-    const { id, slug } = extracted;
+    const { id } = extracted;
 
     // Title from .tt
     const title = $bsx.find('.tt').text().trim() 
@@ -42,7 +42,7 @@ export function parseMangaList(html: string): Manga[] {
       || '';
 
     // Cover from .limit img src
-    const coverUrl = $bsx.find('.limit img').attr('src') ?? '';
+    const coverUrl = normalizeImageUrl($bsx.find('.limit img').attr('src') ?? '');
 
     // Type from .limit .type (e.g., "Manga", "MANHWA", "Manhua")
     const typeText = $bsx.find('.limit .type').text().trim();
@@ -66,7 +66,6 @@ export function parseMangaList(html: string): Manga[] {
 
     mangaList.push({
       id,
-      slug,
       title,
       type,
       coverUrl,

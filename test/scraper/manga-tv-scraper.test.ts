@@ -270,7 +270,7 @@ describe('MangaTVScraper', () => {
         url: 'https://mangatv.net/manga/36031/peque-o-hongo',
       });
 
-      const result = await scraper.getMangaDetail(36031, 'peque-o-hongo');
+      const result = await scraper.getMangaDetail(36031);
 
       expect(result.id).toBe(36031);
       expect(result.title).toBe('Pequeño Hongo');
@@ -286,37 +286,37 @@ describe('MangaTVScraper', () => {
         url: 'https://mangatv.net/manga/36031/peque-o-hongo',
       });
 
-      await scraper.getMangaDetail(36031, 'peque-o-hongo');
+      await scraper.getMangaDetail(36031);
 
       expect(mockGet).toHaveBeenCalledWith(
-        'https://mangatv.net/manga/36031/peque-o-hongo'
+        'https://mangatv.net/manga/36031/'
       );
     });
 
     it('should throw ScraperError for invalid ID', async () => {
-      await expect(scraper.getMangaDetail(0, 'slug')).rejects.toThrow('Invalid manga ID');
+      await expect(scraper.getMangaDetail(0)).rejects.toThrow('Invalid manga ID');
     });
 
     it('should throw ScraperError for negative ID', async () => {
-      await expect(scraper.getMangaDetail(-1, 'slug')).rejects.toThrow('Invalid manga ID');
+      await expect(scraper.getMangaDetail(-1)).rejects.toThrow('Invalid manga ID');
     });
 
     it('should work without slug (omits slug from URL)', async () => {
       const fixtureHtml = readFileSync(join(FIXTURES_DIR, 'detail-page.html'), 'utf-8');
       mockGet.mockResolvedValueOnce({ data: fixtureHtml, status: 200, headers: {}, url: 'https://mangatv.net/manga/36031/' });
 
-      // Calling without slug should omit slug from URL
+      // Calling without slug should use ID-only URL
       const result = await scraper.getMangaDetail(36031);
       expect(mockGet).toHaveBeenCalledWith('https://mangatv.net/manga/36031/');
       expect(result.id).toBe(36031);
     });
 
-    it('should work with whitespace-only slug (treated as missing)', async () => {
+    it('should work with empty options', async () => {
       const fixtureHtml = readFileSync(join(FIXTURES_DIR, 'detail-page.html'), 'utf-8');
       mockGet.mockResolvedValueOnce({ data: fixtureHtml, status: 200, headers: {}, url: 'https://mangatv.net/manga/36031/' });
 
-      // Whitespace-only slug should be treated as missing
-      const result = await scraper.getMangaDetail(36031, '   ');
+      // Empty options object should work
+      const result = await scraper.getMangaDetail(36031, {});
       expect(mockGet).toHaveBeenCalledWith('https://mangatv.net/manga/36031/');
       expect(result.id).toBe(36031);
     });
@@ -324,7 +324,7 @@ describe('MangaTVScraper', () => {
     it('should wrap errors in ScraperError', async () => {
       mockGet.mockRejectedValue(new Error('Network failure'));
 
-      await expect(scraper.getMangaDetail(36031, 'peque-o-hongo'))
+      await expect(scraper.getMangaDetail(36031))
         .rejects.toThrow(ScraperError);
     });
   });
@@ -339,7 +339,7 @@ describe('MangaTVScraper', () => {
         url: 'https://mangatv.net/manga/36031/peque-o-hongo',
       });
 
-      const result = await scraper.getMangaDetail(36031, 'peque-o-hongo', {});
+      const result = await scraper.getMangaDetail(36031, {});
       
       expect(result.id).toBe(36031);
     });
@@ -353,7 +353,7 @@ describe('MangaTVScraper', () => {
         url: 'https://mangatv.net/manga/1234/yotsuba',
       });
 
-      const result = await scraper.getMangaDetail(1234, 'yotsuba', { order: 'asc' });
+      const result = await scraper.getMangaDetail(1234, { order: 'asc' });
       
       // ASC order: oldest first
       expect(result.chapters[0].number).toBe('120');
@@ -369,7 +369,7 @@ describe('MangaTVScraper', () => {
         url: 'https://mangatv.net/manga/1234/manga-versiones',
       });
 
-      const result = await scraper.getMangaDetail(1234, 'manga-versiones', { groupVersions: true });
+      const result = await scraper.getMangaDetail(1234, { groupVersions: true });
       
       // Should be grouped: 62 (2), 61 (1), 60 (3), 1 (1) = 4 total
       expect(result.chapters).toHaveLength(4);
@@ -384,7 +384,7 @@ describe('MangaTVScraper', () => {
         url: 'https://mangatv.net/manga/1234/manga-versiones',
       });
 
-      const result = await scraper.getMangaDetail(1234, 'manga-versiones', { 
+      const result = await scraper.getMangaDetail(1234, { 
         order: 'asc', 
         groupVersions: true 
       });
@@ -392,53 +392,6 @@ describe('MangaTVScraper', () => {
       // Grouped and ordered ASC
       expect(result.chapters[0].number).toBe('1');
       expect(result.chapters[3].number).toBe('62');
-    });
-  });
-
-  describe('getMangaDetailByUrl', () => {
-    it('should fetch manga detail by URL', async () => {
-      const html = loadFixture('detail-page.html');
-      mockGet.mockResolvedValue({
-        data: html,
-        status: 200,
-        headers: {},
-        url: 'https://mangatv.net/manga/36031/peque-o-hongo',
-      });
-
-      const result = await scraper.getMangaDetailByUrl(
-        'https://mangatv.net/manga/36031/peque-o-hongo'
-      );
-
-      expect(result.id).toBe(36031);
-      expect(result.title).toBe('Pequeño Hongo');
-    });
-
-    it('should throw ScraperError for empty URL', async () => {
-      await expect(scraper.getMangaDetailByUrl('')).rejects.toThrow('URL cannot be empty');
-    });
-
-    it('should throw ScraperError for invalid URL format', async () => {
-      await expect(scraper.getMangaDetailByUrl('invalid-url')).rejects.toThrow('Invalid manga URL');
-    });
-
-    it('should throw ScraperError for URL without manga path', async () => {
-      await expect(scraper.getMangaDetailByUrl('https://mangatv.net/lista')).rejects.toThrow('Invalid manga URL');
-    });
-
-    it('should extract id and slug from URL', async () => {
-      const html = loadFixture('detail-page.html');
-      mockGet.mockResolvedValue({
-        data: html,
-        status: 200,
-        headers: {},
-        url: 'https://mangatv.net/manga/36031/peque-o-hongo',
-      });
-
-      await scraper.getMangaDetailByUrl('https://mangatv.net/manga/36031/peque-o-hongo');
-
-      expect(mockGet).toHaveBeenCalledWith(
-        'https://mangatv.net/manga/36031/peque-o-hongo'
-      );
     });
   });
 
@@ -491,7 +444,7 @@ describe('MangaTVScraper', () => {
   });
 
   describe('getChapterPages', () => {
-    it('should fetch and parse chapter pages from /leer/ URL', async () => {
+    it('should fetch and parse chapter pages from hash', async () => {
       const html = loadFixture('chapter-page.html');
       mockGet.mockResolvedValue({
         data: html,
@@ -500,7 +453,7 @@ describe('MangaTVScraper', () => {
         url: 'https://mangatv.net/leer/b35a0970901f4f',
       });
 
-      const result = await scraper.getChapterPages('https://mangatv.net/leer/b35a0970901f4f');
+      const result = await scraper.getChapterPages('b35a0970901f4f');
 
       expect(result.pages).toHaveLength(18);
       expect(result.totalPages).toBe(18);
@@ -509,50 +462,62 @@ describe('MangaTVScraper', () => {
       expect(result.nextChapterUrl).toBeDefined();
     });
 
-    it('should fetch and parse chapter pages from /capitulo/ URL', async () => {
+    it('should build correct /leer/ URL from hash', async () => {
       const html = loadFixture('chapter-page.html');
       mockGet.mockResolvedValue({
         data: html,
         status: 200,
         headers: {},
-        url: 'https://mangatv.net/capitulo/36031/65',
+        url: 'https://mangatv.net/leer/b35a0970901f4f',
       });
 
-      const result = await scraper.getChapterPages('https://mangatv.net/capitulo/36031/65');
+      await scraper.getChapterPages('b35a0970901f4f');
 
-      expect(result.pages).toHaveLength(18);
-      expect(result.totalPages).toBe(18);
-      expect(result.chapterHash).toBeUndefined();
+      expect(mockGet).toHaveBeenCalledWith('https://mangatv.net/leer/b35a0970901f4f');
     });
 
-    it('should throw ScraperError for empty URL', async () => {
+    it('should throw ScraperError for empty hash', async () => {
       await expect(scraper.getChapterPages('')).rejects.toThrow(ScraperError);
-      await expect(scraper.getChapterPages('')).rejects.toThrow('URL cannot be empty');
+      await expect(scraper.getChapterPages('')).rejects.toThrow('Hash cannot be empty');
     });
 
-    it('should throw ScraperError for whitespace-only URL', async () => {
+    it('should throw ScraperError for whitespace-only hash', async () => {
       await expect(scraper.getChapterPages('   ')).rejects.toThrow(ScraperError);
-      await expect(scraper.getChapterPages('   ')).rejects.toThrow('URL cannot be empty');
+      await expect(scraper.getChapterPages('   ')).rejects.toThrow('Hash cannot be empty');
     });
 
-    it('should throw ScraperError for invalid URL format', async () => {
-      await expect(scraper.getChapterPages('https://mangatv.net/manga/36031/slug'))
+    it('should throw ScraperError for invalid hash with special chars', async () => {
+      await expect(scraper.getChapterPages('hash-with-dashes'))
         .rejects.toThrow(ScraperError);
-      await expect(scraper.getChapterPages('https://mangatv.net/manga/36031/slug'))
-        .rejects.toThrow(/Invalid chapter URL/);
+      await expect(scraper.getChapterPages('hash-with-dashes'))
+        .rejects.toThrow(/Invalid chapter hash/);
     });
 
-    it('should throw ScraperError for /lista/ URL', async () => {
-      await expect(scraper.getChapterPages('https://mangatv.net/lista'))
+    it('should throw ScraperError for hash with spaces', async () => {
+      await expect(scraper.getChapterPages('abc def'))
         .rejects.toThrow(ScraperError);
+    });
+
+    it('should trim hash before use', async () => {
+      const html = loadFixture('chapter-page.html');
+      mockGet.mockResolvedValue({
+        data: html,
+        status: 200,
+        headers: {},
+        url: 'https://mangatv.net/leer/b35a0970901f4f',
+      });
+
+      await scraper.getChapterPages('  b35a0970901f4f  ');
+
+      expect(mockGet).toHaveBeenCalledWith('https://mangatv.net/leer/b35a0970901f4f');
     });
 
     it('should wrap network errors in ScraperError with retryable flag', async () => {
       mockGet.mockRejectedValue(new Error('Network failure'));
 
       try {
-        await scraper.getChapterPages('https://mangatv.net/leer/b35a0970901f4f');
-        fail('Expected error to be thrown');
+        await scraper.getChapterPages('b35a0970901f4f');
+        expect.fail('Expected error to be thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(ScraperError);
         expect((error as ScraperError).isRetryable).toBe(true);
@@ -563,8 +528,8 @@ describe('MangaTVScraper', () => {
       mockGet.mockRejectedValue(new Error('status code 404'));
 
       try {
-        await scraper.getChapterPages('https://mangatv.net/leer/nonexistent');
-        fail('Expected error to be thrown');
+        await scraper.getChapterPages('nonexistent');
+        expect.fail('Expected error to be thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(ScraperError);
         expect((error as ScraperError).isRetryable).toBe(false);
@@ -581,9 +546,9 @@ describe('MangaTVScraper', () => {
         url: 'https://mangatv.net/leer/b35a0970901f4f',
       });
 
-      await expect(scraper.getChapterPages('https://mangatv.net/leer/b35a0970901f4f'))
+      await expect(scraper.getChapterPages('b35a0970901f4f'))
         .rejects.toThrow(ScraperError);
-      await expect(scraper.getChapterPages('https://mangatv.net/leer/b35a0970901f4f'))
+      await expect(scraper.getChapterPages('b35a0970901f4f'))
         .rejects.toThrow(/ts_reader/);
     });
   });

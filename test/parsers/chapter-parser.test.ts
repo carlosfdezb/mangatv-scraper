@@ -54,16 +54,17 @@ describe('ChapterParser', () => {
       const result = parseChaptersFromDetail(html);
       
       // First chapter has "Hace 2 horas"
-      expect(result[0].date).toBeTruthy();
-      expect(result[0].date).toMatch(/^\d{4}-\d{2}-\d{2}/);
+      expect(result[0].versions[0].date).toBeTruthy();
+      expect(result[0].versions[0].date).toMatch(/^\d{4}-\d{2}-\d{2}/);
     });
 
-    it('should build full chapter URLs', () => {
+    it('should build full chapter URLs via hash', () => {
       const html = loadFixture('detail-page.html');
       const result = parseChaptersFromDetail(html);
       
-      expect(result[0].url).toBe('https://mangatv.net/capitulo/36031/45');
-      expect(result[3].url).toBe('https://mangatv.net/capitulo/36031/42.5');
+      // Old structure uses /capitulo/ URLs, so hash is empty
+      expect(result[0].versions[0].hash).toBe('');
+      expect(result[3].versions[0].hash).toBe('');
     });
 
     it('should return empty array when no chapters', () => {
@@ -107,10 +108,8 @@ describe('ChapterParser', () => {
       const html = loadFixture('detail-page.html');
       const result = parseChaptersFromDetail(html);
       
-      // Chapter URLs like /capitulo/36031/45 don't match /manga/{id}/{slug} pattern
-      // so extractMangaFromUrl returns null, resulting in id=0
-      // This is expected behavior since chapter URLs have different format
-      expect(result[0].id).toBe(0);
+      // Old structure uses /capitulo/ URLs, hash is empty
+      expect(result[0].versions[0].hash).toBe('');
     });
   });
 
@@ -162,72 +161,72 @@ describe('ChapterParser', () => {
   });
 
   describe('groupChapterVersions', () => {
-    it('should return chapters unchanged when no duplicates', () => {
+    it('should return chapters with single versions when no duplicates', () => {
       const chapters = [
-        { id: 0, number: '1', title: 'Capítulo 1', date: '2024-01-01', url: 'https://mangatv.net/leer/aaa', hash: 'aaa', scanlator: '' },
-        { id: 0, number: '2', title: 'Capítulo 2', date: '2024-01-02', url: 'https://mangatv.net/leer/bbb', hash: 'bbb', scanlator: '' },
+        { number: '1', title: 'Capítulo 1', rawDate: '2024-01-01', hash: 'aaa', scanlator: '' },
+        { number: '2', title: 'Capítulo 2', rawDate: '2024-01-02', hash: 'bbb', scanlator: '' },
       ];
       
       const result = groupChapterVersions(chapters);
       
       expect(result).toHaveLength(2);
-      expect(result[0].versions).toBeUndefined();
-      expect(result[1].versions).toBeUndefined();
+      expect(result[0].versions).toHaveLength(1);
+      expect(result[1].versions).toHaveLength(1);
     });
 
     it('should group chapters with same number', () => {
       const chapters = [
-        { id: 0, number: '62', title: 'Capítulo 62', date: '2025-03-17', url: 'https://mangatv.net/leer/abc', hash: 'abc', scanlator: 'ZonaTMO' },
-        { id: 0, number: '62', title: 'Capítulo 62', date: '2025-03-15', url: 'https://mangatv.net/leer/def', hash: 'def', scanlator: 'CowboyBebop' },
-        { id: 0, number: '62', title: 'Capítulo 62', date: '2025-03-10', url: 'https://mangatv.net/leer/ghi', hash: 'ghi', scanlator: '' },
+        { number: '62', title: 'Capítulo 62', rawDate: '2025-03-17', hash: 'abc', scanlator: 'ZonaTMO' },
+        { number: '62', title: 'Capítulo 62', rawDate: '2025-03-15', hash: 'def', scanlator: 'CowboyBebop' },
+        { number: '62', title: 'Capítulo 62', rawDate: '2025-03-10', hash: 'ghi', scanlator: '' },
       ];
       
       const result = groupChapterVersions(chapters);
       
       expect(result).toHaveLength(1);
       expect(result[0].number).toBe('62');
-      expect(result[0].versions).toHaveLength(2);
+      expect(result[0].versions).toHaveLength(3);
     });
 
-    it('should use latest date as primary chapter date', () => {
+    it('should use latest date as primary version', () => {
       const chapters = [
-        { id: 0, number: '62', title: 'Capítulo 62', date: '2025-03-15', url: 'https://mangatv.net/leer/abc', hash: 'abc', scanlator: 'Old' },
-        { id: 0, number: '62', title: 'Capítulo 62', date: '2025-03-17', url: 'https://mangatv.net/leer/def', hash: 'def', scanlator: 'New' },
+        { number: '62', title: 'Capítulo 62', rawDate: '2025-03-15', hash: 'abc', scanlator: 'Old' },
+        { number: '62', title: 'Capítulo 62', rawDate: '2025-03-17', hash: 'def', scanlator: 'New' },
       ];
       
       const result = groupChapterVersions(chapters);
       
-      expect(result[0].date).toBe('2025-03-17');
-      expect(result[0].url).toBe('https://mangatv.net/leer/def');
+      // Primary chapter (first in versions array) should have latest date
+      expect(result[0].versions[0].date).toBe('2025-03-17');
+      expect(result[0].versions[0].hash).toBe('def');
     });
 
     it('should preserve version metadata in versions array', () => {
       const chapters = [
-        { id: 0, number: '10', title: 'Capítulo 10', date: '2025-01-01', url: 'https://mangatv.net/leer/aaa', hash: 'aaa', scanlator: 'GroupA' },
-        { id: 0, number: '10', title: 'Capítulo 10', date: '2025-01-02', url: 'https://mangatv.net/leer/bbb', hash: 'bbb', scanlator: 'GroupB' },
+        { number: '10', title: 'Capítulo 10', rawDate: '2025-01-01', hash: 'aaa', scanlator: 'GroupA' },
+        { number: '10', title: 'Capítulo 10', rawDate: '2025-01-02', hash: 'bbb', scanlator: 'GroupB' },
       ];
       
       const result = groupChapterVersions(chapters);
       
       expect(result[0].versions).toBeDefined();
-      expect(result[0].versions).toHaveLength(1);
-      expect(result[0].versions![0].url).toBe('https://mangatv.net/leer/aaa');
-      expect(result[0].versions![0].hash).toBe('aaa');
-      expect(result[0].versions![0].scanlator).toBe('GroupA');
-      expect(result[0].versions![0].date).toBe('2025-01-01');
+      expect(result[0].versions).toHaveLength(2);
+      expect(result[0].versions[0].hash).toBe('bbb'); // primary (latest)
+      expect(result[0].versions[0].scanlator).toBe('GroupB');
+      expect(result[0].versions[0].date).toBe('2025-01-02');
     });
 
     it('should handle decimal chapter numbers', () => {
       const chapters = [
-        { id: 0, number: '42.5', title: 'Capítulo 42.5', date: '2025-01-01', url: 'https://mangatv.net/leer/aaa', hash: 'aaa', scanlator: '' },
-        { id: 0, number: '42.5', title: 'Capítulo 42.5', date: '2025-01-02', url: 'https://mangatv.net/leer/bbb', hash: 'bbb', scanlator: 'Other' },
+        { number: '42.5', title: 'Capítulo 42.5', rawDate: '2025-01-01', hash: 'aaa', scanlator: '' },
+        { number: '42.5', title: 'Capítulo 42.5', rawDate: '2025-01-02', hash: 'bbb', scanlator: 'Other' },
       ];
       
       const result = groupChapterVersions(chapters);
       
       expect(result).toHaveLength(1);
       expect(result[0].number).toBe('42.5');
-      expect(result[0].versions).toHaveLength(1);
+      expect(result[0].versions).toHaveLength(2);
     });
   });
 
@@ -246,16 +245,16 @@ describe('ChapterParser', () => {
       const url = 'https://mangatv.net/capitulo/36031/45';
       const result = parseChapter(html, url);
       
-      expect(result.id).toBe(36031);
       expect(result.number).toBe('45');
+      expect(result.versions[0].hash).toBe('');
     });
 
-    it('should extract ID from chapter URL', () => {
+    it('should extract hash from chapter URL', () => {
       const html = '<html><body><p>Some content</p></body></html>';
-      const url = 'https://mangatv.net/capitulo/12345/45';
+      const url = 'https://mangatv.net/leer/abc123hash';
       const result = parseChapter(html, url);
       
-      expect(result.id).toBe(12345);
+      expect(result.versions[0].hash).toBe('abc123hash');
     });
 
     it('should handle decimal chapter numbers in URL', () => {
@@ -278,7 +277,6 @@ describe('ChapterParser', () => {
       const url = 'https://mangatv.net/capitulo/12345/100';
       const result = parseChapter(html, url);
       
-      expect(result.id).toBe(12345);
       expect(result.number).toBe('100');
     });
 
@@ -303,15 +301,16 @@ describe('ChapterParser', () => {
       const url = 'https://mangatv.net/capitulo/12345/1';
       const result = parseChapter(html, url);
       
-      expect(result.date).toBeTruthy();
+      expect(result.versions[0].date).toBeTruthy();
     });
 
-    it('should build full URL for relative chapter URLs', () => {
+    it('should handle relative chapter URLs', () => {
       const html = '<html><body><p>Content</p></body></html>';
       const url = '/capitulo/12345/45';
       const result = parseChapter(html, url);
       
-      expect(result.url).toContain('/capitulo/12345/45');
+      // hash is extracted from URL
+      expect(result.versions[0].hash).toBe('');
     });
   });
 
@@ -439,18 +438,17 @@ describe('parseChapterPages', () => {
   describe('parseChapterPages - happy path', () => {
     it('should parse chapter pages from fixture HTML', () => {
       const html = loadFixture('chapter-page.html');
-      const url = 'https://mangatv.net/leer/b35a0970901f4f';
-      const result = parseChapterPages(html, url);
+      const hash = 'b35a0970901f4f';
+      const result = parseChapterPages(html, hash);
       
       expect(result.pages).toHaveLength(18);
       expect(result.totalPages).toBe(18);
       expect(result.chapterHash).toBe('b35a0970901f4f');
-      expect(result.url).toBe(url);
     });
 
     it('should assign correct page numbers starting from 1', () => {
       const html = loadFixture('chapter-page.html');
-      const result = parseChapterPages(html, 'https://mangatv.net/leer/b35a0970901f4f');
+      const result = parseChapterPages(html, 'b35a0970901f4f');
       
       expect(result.pages[0].pageNumber).toBe(1);
       expect(result.pages[17].pageNumber).toBe(18);
@@ -458,7 +456,7 @@ describe('parseChapterPages', () => {
 
     it('should normalize protocol-relative URLs to https://', () => {
       const html = loadFixture('chapter-page.html');
-      const result = parseChapterPages(html, 'https://mangatv.net/leer/b35a0970901f4f');
+      const result = parseChapterPages(html, 'b35a0970901f4f');
       
       for (const page of result.pages) {
         expect(page.imageUrl).toMatch(/^https:\/\//);
@@ -467,9 +465,8 @@ describe('parseChapterPages', () => {
 
     it('should extract image format from URL', () => {
       const html = loadFixture('chapter-page.html');
-      const result = parseChapterPages(html, 'https://mangatv.net/leer/b35a0970901f4f');
+      const result = parseChapterPages(html, 'b35a0970901f4f');
       
-      // All URLs in fixture end with .webp
       for (const page of result.pages) {
         expect(page.format).toBe('webp');
       }
@@ -477,27 +474,23 @@ describe('parseChapterPages', () => {
 
     it('should include prevChapterUrl when available', () => {
       const html = loadFixture('chapter-page.html');
-      const result = parseChapterPages(html, 'https://mangatv.net/leer/b35a0970901f4f');
+      const result = parseChapterPages(html, 'b35a0970901f4f');
       
       expect(result.prevChapterUrl).toBeDefined();
-      // The live page may have placeholder URLs like "#/prev/" or real URLs like "/leer/..."
       expect(typeof result.prevChapterUrl).toBe('string');
     });
 
     it('should include nextChapterUrl when available', () => {
       const html = loadFixture('chapter-page.html');
-      const result = parseChapterPages(html, 'https://mangatv.net/leer/b35a0970901f4f');
+      const result = parseChapterPages(html, 'b35a0970901f4f');
       
       expect(result.nextChapterUrl).toBeDefined();
-      // The live page may have placeholder URLs like "#/next/" or real URLs like "/leer/..."
       expect(typeof result.nextChapterUrl).toBe('string');
     });
   });
 
   describe('parseChapterPages - metadata filtering', () => {
     it('should filter out non-image entries', () => {
-      // This tests that the CDN pattern filtering works
-      // Even if decoded URLs include metadata entries, only CDN URLs should pass
       const htmlWithMetadata = `
         <html>
           <body>
@@ -509,9 +502,8 @@ describe('parseChapterPages', () => {
           </body>
         </html>
       `;
-      const result = parseChapterPages(htmlWithMetadata, 'https://mangatv.net/leer/test');
+      const result = parseChapterPages(htmlWithMetadata, 'testhash');
       
-      // Should only have 2 pages (filtering out "bWF0YWRhdGE=")
       expect(result.totalPages).toBe(2);
       expect(result.pages).toHaveLength(2);
     });
@@ -521,7 +513,7 @@ describe('parseChapterPages', () => {
     it('should throw ScraperError when ts_reader is missing', () => {
       const html = '<html><body><p>No chapter content here</p></body></html>';
       
-      expect(() => parseChapterPages(html, 'https://mangatv.net/leer/test'))
+      expect(() => parseChapterPages(html, 'testhash'))
         .toThrow(ScraperError);
     });
 
@@ -529,31 +521,30 @@ describe('parseChapterPages', () => {
       const html = '<html><body><p>No chapter content here</p></body></html>';
       
       try {
-        parseChapterPages(html, 'https://mangatv.net/leer/test');
-        fail('Expected error to be thrown');
+        parseChapterPages(html, 'testhash');
+        throw new Error('Expected error to be thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(ScraperError);
         expect((error as ScraperError).message).toContain('ts_reader');
       }
     });
 
-    it('should throw ScraperError with url in error', () => {
+    it('should throw ScraperError with constructed URL in error', () => {
       const html = '<html><body><p>No chapter content here</p></body></html>';
-      const testUrl = 'https://mangatv.net/leer/test123';
+      const testHash = 'test123';
       
       try {
-        parseChapterPages(html, testUrl);
-        fail('Expected error to be thrown');
+        parseChapterPages(html, testHash);
+        throw new Error('Expected error to be thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(ScraperError);
-        expect((error as ScraperError).url).toBe(testUrl);
+        expect((error as ScraperError).url).toBe(`https://mangatv.net/leer/${testHash}`);
       }
     });
   });
 
   describe('parseChapterPages - no valid images', () => {
     it('should throw ScraperError when no valid image URLs found', () => {
-      // HTML with ts_reader but non-matching base64 content
       const html = `
         <html>
           <body>
@@ -566,14 +557,11 @@ describe('parseChapterPages', () => {
         </html>
       `;
       
-      expect(() => parseChapterPages(html, 'https://mangatv.net/leer/test'))
+      expect(() => parseChapterPages(html, 'testhash'))
         .toThrow(ScraperError);
     });
 
     it('should throw ScraperError with descriptive message for no images', () => {
-      // HTML with ts_reader and base64 that decodes to non-matching URL
-      // Ly9pbWctbm90LW1hbmdhdHYubmV0L3NvbWUvcGF0aC9pbWFnZS53ZWJw decodes to //img-not-mangatv.net/some/path/image.webp
-      // which doesn't match the img{N}.mangatv.net/library/ pattern
       const html = `
         <html>
           <body>
@@ -587,8 +575,8 @@ describe('parseChapterPages', () => {
       `;
       
       try {
-        parseChapterPages(html, 'https://mangatv.net/leer/test');
-        fail('Expected error to be thrown');
+        parseChapterPages(html, 'testhash');
+        throw new Error('Expected error to be thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(ScraperError);
         expect((error as ScraperError).message).toContain('no valid image URLs');
@@ -598,7 +586,6 @@ describe('parseChapterPages', () => {
 
   describe('parseChapterPages - base64 decode failure', () => {
     it('should skip entries that fail base64 decode', () => {
-      // This is handled gracefully - the test just verifies we get some pages
       const html = `
         <html>
           <body>
@@ -611,16 +598,15 @@ describe('parseChapterPages', () => {
         </html>
       `;
       
-      const result = parseChapterPages(html, 'https://mangatv.net/leer/test');
+      const result = parseChapterPages(html, 'testhash');
       
-      // Should successfully parse the one valid URL
       expect(result.pages).toHaveLength(1);
       expect(result.pages[0].imageUrl).toContain('img5.mangatv.net');
     });
   });
 
-  describe('parseChapterPages - /capitulo/ URL without hash', () => {
-    it('should parse /capitulo/ URL without chapterHash', () => {
+  describe('parseChapterPages - hash always set', () => {
+    it('should always set chapterHash from hash parameter', () => {
       const html = `
         <html>
           <body>
@@ -632,11 +618,9 @@ describe('parseChapterPages', () => {
           </body>
         </html>
       `;
-      const url = 'https://mangatv.net/capitulo/36031/45';
-      const result = parseChapterPages(html, url);
+      const result = parseChapterPages(html, 'abc123hash');
       
-      expect(result.url).toBe(url);
-      expect(result.chapterHash).toBeUndefined();
+      expect(result.chapterHash).toBe('abc123hash');
       expect(result.pages).toHaveLength(1);
     });
   });

@@ -23,7 +23,6 @@ describe('DetailParser', () => {
       const result = parseMangaDetail(html, url);
       
       expect(result.id).toBe(36031);
-      expect(result.slug).toBe('peque-o-hongo');
       expect(result.title).toBe('Pequeño Hongo');
     });
 
@@ -48,7 +47,7 @@ describe('DetailParser', () => {
       const url = 'https://mangatv.net/manga/36031/peque-o-hongo';
       const result = parseMangaDetail(html, url);
       
-      expect(result.status).toBe('En publicación');
+      expect(result.status).toBe('Ongoing');
     });
 
     it('should parse author correctly', () => {
@@ -71,10 +70,31 @@ describe('DetailParser', () => {
       const html = loadFixture('detail-page.html');
       const url = 'https://mangatv.net/manga/36031/peque-o-hongo';
       const result = parseMangaDetail(html, url);
-      
+
       expect(result.genres).toContain('Aventura');
       expect(result.genres).toContain('Fantasía');
       expect(result.genres).toContain('Sobrenatural');
+    });
+
+    it('should NOT include alternative titles as genres', () => {
+      // New site structure has "Título Alternativos" in .wd-full with .mgen class
+      // These should NOT be parsed as genres
+      const html = loadFixture('detail-page-yotsuba-alternatives.html');
+      const url = 'https://mangatv.net/manga/539/yotsuba-to';
+      const result = parseMangaDetail(html, url);
+
+      // Only actual genres should be included
+      expect(result.genres).toContain('Comedia');
+      expect(result.genres).toContain('Recuentos de la vida');
+      expect(result.genres).toHaveLength(2);
+
+      // These are alternative titles, NOT genres - they should not appear
+      expect(result.genres).not.toContain('よつばと！');
+      expect(result.genres).not.toContain('Yotsuba &!');
+      expect(result.genres).not.toContain('Yotsuba and!');
+      expect(result.genres).not.toContain('Yotsubato');
+      expect(result.genres).not.toContain('Ёцуба!');
+      expect(result.genres).not.toContain('요츠바랑!');
     });
 
     it('should parse demographics correctly', () => {
@@ -159,8 +179,9 @@ describe('DetailParser', () => {
       const url = 'https://mangatv.net/manga/36031/peque-o-hongo';
       const result = parseMangaDetail(html, url);
       
-      expect(result.chapters[0].number).toBe('45');
-      expect(result.chapters[3].number).toBe('42.5'); // Decimal chapter
+      // With new defaults (ASC order), first chapter is oldest
+      expect(result.chapters[0].number).toBe('42');
+      expect(result.chapters[3].number).toBe('44'); // Decimal chapter
     });
 
     it('should parse chapter dates', () => {
@@ -168,18 +189,19 @@ describe('DetailParser', () => {
       const url = 'https://mangatv.net/manga/36031/peque-o-hongo';
       const result = parseMangaDetail(html, url);
       
-      // First chapter has "Hace 2 horas"
-      expect(result.chapters[0].date).toBeTruthy();
-      expect(result.chapters[0].date).toMatch(/^\d{4}-\d{2}-\d{2}/);
+      // First chapter (oldest) has "Hace 2 semanas"
+      expect(result.chapters[0].versions[0].date).toBeTruthy();
+      expect(result.chapters[0].versions[0].date).toMatch(/^\d{4}-\d{2}-\d{2}/);
     });
 
-    it('should build correct chapter URLs', () => {
+    it('should have versions for each chapter', () => {
       const html = loadFixture('detail-page.html');
       const url = 'https://mangatv.net/manga/36031/peque-o-hongo';
       const result = parseMangaDetail(html, url);
       
-      expect(result.chapters[0].url).toBe('https://mangatv.net/capitulo/36031/45');
-      expect(result.chapters[3].url).toBe('https://mangatv.net/capitulo/36031/42.5');
+      // Each chapter should have a versions array
+      expect(result.chapters[0].versions).toHaveLength(1);
+      expect(result.chapters[3].versions).toHaveLength(1);
     });
   });
 
@@ -190,9 +212,9 @@ describe('DetailParser', () => {
       const result = parseMangaDetail(html, url);
       
       expect(result.chapters).toHaveLength(3);
-      // Without options, chapters are in DESC order (site default)
-      expect(result.chapters[0].number).toBe('122');
-      expect(result.chapters[2].number).toBe('120');
+      // With new defaults, chapters are in ASC order (oldest first)
+      expect(result.chapters[0].number).toBe('120');
+      expect(result.chapters[2].number).toBe('122');
     });
 
     it('should reverse chapters when order is asc', () => {
@@ -228,23 +250,23 @@ describe('DetailParser', () => {
       // Find chapter 62
       const ch62 = result.chapters.find(c => c.number === '62');
       expect(ch62).toBeDefined();
-      expect(ch62!.versions).toHaveLength(1); // 1 other version
+      expect(ch62!.versions).toHaveLength(2); // 2 total versions (primary + 1 other)
       
       // Find chapter 60
       const ch60 = result.chapters.find(c => c.number === '60');
       expect(ch60).toBeDefined();
-      expect(ch60!.versions).toHaveLength(2); // 2 other versions
+      expect(ch60!.versions).toHaveLength(3); // 3 total versions (primary + 2 others)
     });
 
-    it('should not add versions field when groupVersions is false', () => {
+    it('should have single version per chapter when groupVersions is false', () => {
       const html = loadFixture('detail-page-versions.html');
       const url = 'https://mangatv.net/manga/1234/manga-versiones';
       const result = parseMangaDetail(html, url, { groupVersions: false });
       
       // Without grouping, all 7 chapter entries remain
       expect(result.chapters).toHaveLength(7);
-      // No chapter should have versions
-      expect(result.chapters.every(c => !c.versions)).toBe(true);
+      // Each chapter should have exactly 1 version (the ungrouped one)
+      expect(result.chapters.every(c => c.versions.length === 1)).toBe(true);
     });
 
     it('should combine grouping and ordering', () => {
@@ -269,9 +291,9 @@ describe('DetailParser', () => {
       const result = parseMangaDetail(html, url, { groupVersions: true });
       
       // Chapter 62: dates are 2025-03-17 and 2025-03-15
-      // Primary should be the newer one
+      // Primary should be the newer one (first in versions array)
       const ch62 = result.chapters.find(c => c.number === '62');
-      expect(ch62!.date).toContain('2025-03-17');
+      expect(ch62!.versions[0].date).toContain('2025-03-17');
     });
   });
 
@@ -319,7 +341,6 @@ describe('DetailParser', () => {
       const result = parseMangaDetail(html, url);
       
       expect(result.id).toBe(36031);
-      expect(result.slug).toBe('peque-o-hongo');
     });
 
     it('should handle URL without trailing slash', () => {

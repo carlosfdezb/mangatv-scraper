@@ -26,7 +26,6 @@ describe('ListParser', () => {
       // Check first manga
       const first = result[0];
       expect(first.id).toBe(36031);
-      expect(first.slug).toBe('peque-o-hongo');
       expect(first.title).toBe('Pequeño Hongo');
       expect(first.type).toBe('Manga');
       expect(first.coverUrl).toContain('cover_250x350.jpg');
@@ -41,7 +40,6 @@ describe('ListParser', () => {
       // Check second manga (no ERO)
       const second = result[1];
       expect(second.id).toBe(35823);
-      expect(second.slug).toBe('one-piece');
       expect(second.title).toBe('One Piece');
       expect(second.type).toBe('Manga');
       expect(second.isEro).toBe(false);

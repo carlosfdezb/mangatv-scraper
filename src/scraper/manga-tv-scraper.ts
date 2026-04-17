@@ -4,7 +4,7 @@
  */
 
 import { HttpClient, createHttpClient } from './http/client.js';
-import { parseMangaListResult, parseMangaDetail, parseChapterPages, canParseChapterPages } from './parsers/index.js';
+import { parseMangaListResult, parseMangaDetail, parseChapterPages } from './parsers/index.js';
 import { buildListUrl } from '../utils/helpers.js';
 import { BASE_URL, PATHS, buildMangaUrl } from '../constants/index.js';
 import type { 
@@ -17,6 +17,8 @@ import type {
   MangaDetailOptions,
 } from '../types/index.js';
 import { ScraperError } from '../types/scraper.js';
+
+const HASH_REGEX = /^[a-zA-Z0-9]+$/;
 
 /**
  * Main scraper class for MangaTV
@@ -138,22 +140,20 @@ export class MangaTVScraper {
   }
 
   /**
-   * Get manga details by ID and slug
+   * Get manga details by ID
    * @param id - Manga ID
-   * @param slug - Manga slug (optional, inferred from URL if not provided)
    * @param options - Optional settings for chapter ordering and grouping
    * @returns Full manga details
    */
   async getMangaDetail(
     id: number, 
-    slug?: string,
     options?: MangaDetailOptions
   ): Promise<MangaDetail> {
     if (!id || id <= 0) {
       throw new ScraperError(`Invalid manga ID: ${id}`, '');
     }
 
-    const url = buildMangaUrl(id, slug);
+    const url = buildMangaUrl(id);
 
     try {
       const html = await this.fetchHtml(url);
@@ -169,32 +169,6 @@ export class MangaTVScraper {
         statusCode === 404 ? false : true
       );
     }
-  }
-
-  /**
-   * Get manga details by full URL
-   * @param url - Full manga detail page URL
-   * @param options - Optional settings for chapter ordering and grouping
-   * @returns Full manga details
-   */
-  async getMangaDetailByUrl(
-    url: string,
-    options?: MangaDetailOptions
-  ): Promise<MangaDetail> {
-    if (!url?.trim()) {
-      throw new ScraperError('URL cannot be empty', '');
-    }
-
-    // Validate URL format and extract id/slug
-    const match = url.match(/\/manga\/(\d+)\/([^/?#]+)/);
-    if (!match?.[1] || !match[2]) {
-      throw new ScraperError(`Invalid manga URL: ${url}`, url);
-    }
-
-    const id = parseInt(match[1], 10);
-    const slug = match[2];
-
-    return this.getMangaDetail(id, slug, options);
   }
 
   /**
@@ -226,31 +200,32 @@ export class MangaTVScraper {
   }
 
   /**
-   * Get chapter pages (image URLs) from a chapter page
-   * @param url - Full chapter page URL (/leer/{hash} or /capitulo/{id}/{num})
+   * Get chapter pages (image URLs) from a chapter hash
+   * @param hash - Chapter hash from a /leer/{hash} URL (e.g., "b35a0970901f4f")
    * @returns ChapterPages with all decoded image URLs
-   * @throws {ScraperError} When URL is invalid, empty, or chapter content cannot be extracted
+   * @throws {ScraperError} When hash is invalid, empty, or chapter content cannot be extracted
    */
-  async getChapterPages(url: string): Promise<ChapterPages> {
-    if (!url?.trim()) {
-      throw new ScraperError('URL cannot be empty', '');
+  async getChapterPages(hash: string): Promise<ChapterPages> {
+    if (!hash?.trim()) {
+      throw new ScraperError('Hash cannot be empty', '');
     }
 
-    if (!canParseChapterPages(url)) {
+    if (!HASH_REGEX.test(hash.trim())) {
       throw new ScraperError(
-        `Invalid chapter URL: ${url}. Expected /leer/{hash} or /capitulo/{id}/{num} format.`,
-        url,
+        `Invalid chapter hash: ${hash}. Expected a non-empty alphanumeric string.`,
+        hash,
         undefined,
         false
       );
     }
 
+    const url = `${this.baseUrl}/leer/${hash.trim()}`;
+
     try {
       const html = await this.fetchHtml(url);
-      return parseChapterPages(html, url);
+      return parseChapterPages(html, hash.trim());
     } catch (error) {
       if (error instanceof ScraperError) throw error;
-      // Check if it's a 404
       const statusCode = error instanceof Error && error.message.includes('status code 404') ? 404 : undefined;
       throw new ScraperError(
         `Failed to fetch chapter pages: ${error instanceof Error ? error.message : String(error)}`,

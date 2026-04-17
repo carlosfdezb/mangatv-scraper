@@ -84,6 +84,15 @@ export function parseSiteDate(dateStr: string): string {
     return date.toISOString();
   }
   
+  // "Hace X semanas"
+  const weeksMatch = normalized.match(/hace\s+(\d+)\s+semanas?/);
+  if (weeksMatch?.[1]) {
+    const weeks = parseInt(weeksMatch[1], 10);
+    const date = new Date();
+    date.setDate(date.getDate() - (weeks * 7));
+    return date.toISOString();
+  }
+  
   // Try parsing as ISO date
   const isoMatch = normalized.match(/(\d{4}-\d{2}-\d{2})/);
   if (isoMatch?.[1]) {
@@ -186,23 +195,22 @@ export function deduplicateByKey<T, K>(array: T[], keyFn: (item: T) => K): T[] {
 }
 
 /**
- * Extract manga ID and slug from a manga URL.
+ * Extract manga ID from a manga URL.
  * @param url - Full URL or path like 'https://mangatv.net/manga/36031/peque-o-hongo'
- *                  or 'https://mangatv.net/manga/36031/' (no slug)
- * @returns Object with id and slug, or null if URL doesn't match expected format
+ *                  or 'https://mangatv.net/manga/36031/' (slug ignored)
+ * @returns Object with id, or null if URL doesn't match expected format
  */
-export function extractMangaFromUrl(url: string): { id: number; slug: string } | null {
-  // Match URLs like /manga/36031/slug or /manga/36031/ (no slug)
-  const match = url.match(/\/manga\/(\d+)\/?([^/?#]*)/);
+export function extractMangaFromUrl(url: string): { id: number } | null {
+  // Match URLs like /manga/36031/ or /manga/36031/slug
+  const match = url.match(/\/manga\/(\d+)\/?/);
   if (!match?.[1]) {
     return null;
   }
   const id = parseInt(match[1], 10);
-  const slug = match[2] || '';
   if (isNaN(id) || id <= 0) {
     return null;
   }
-  return { id, slug };
+  return { id };
 }
 
 /**
@@ -265,6 +273,50 @@ export function normalizeMangaType(type: string): import('../types/manga.js').Ma
   const normalized = type.toLowerCase().trim();
   const mapped = MANGA_TYPE_MAP[normalized];
   return mapped ?? 'Manga';
+}
+
+/**
+ * Normalize an image URL to ensure it has a proper protocol.
+ * Handles protocol-relative URLs (//example.com/image.jpg) by adding https:
+ * @param url - Image URL that may be protocol-relative
+ * @returns Normalized URL with https:// protocol
+ */
+export function normalizeImageUrl(url: string): string {
+  if (!url) return url;
+  if (url.startsWith('//')) {
+    return `https:${url}`;
+  }
+  if (url.startsWith('http://')) {
+    return url.replace('http://', 'https://');
+  }
+  return url;
+}
+
+/**
+ * Status value mapping from Spanish to English
+ */
+const STATUS_MAP: Record<string, string> = {
+  // Ongoing variants
+  'publicándose': 'Ongoing',
+  'en publicación': 'Ongoing',
+  'en publicacion': 'Ongoing',
+  // Completed
+  'finalizado': 'Completed',
+  // Hiatus
+  'pausado': 'Hiatus',
+  // Cancelled
+  'cancelado': 'Cancelled',
+};
+
+/**
+ * Normalize manga status from Spanish to English.
+ * @param status - Raw status string from the site
+ * @returns Normalized status in English, or original if not found
+ */
+export function normalizeStatus(status: string): string {
+  if (!status) return status;
+  const normalized = status.toLowerCase().trim();
+  return STATUS_MAP[normalized] ?? status;
 }
 
 /**

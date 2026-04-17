@@ -72,18 +72,12 @@ export type Genre =
  * Represents a chapter of a manga
  */
 export interface Chapter {
-  /** Unique chapter identifier (numeric) */
-  id: number;
   /** Chapter number (e.g., "1", "1.5", "Chapter 10") */
   number: string;
   /** Chapter title */
   title: string;
-  /** Publication date string */
-  date: string;
-  /** Full URL to the chapter */
-  url: string;
-  /** Alternate scanlation versions (present only when groupVersions: true) */
-  versions?: readonly ChapterVersion[];
+  /** Alternate scanlation versions. Always present - single version when ungrouped. */
+  versions: readonly ChapterVersion[];
 }
 
 /**
@@ -95,23 +89,21 @@ export type ChapterOrder = 'asc' | 'desc';
  * Alternate version of a chapter (different scanlation)
  */
 export interface ChapterVersion {
-  /** Chapter URL (/leer/{hash} format) */
-  readonly url: string;
-  /** Chapter hash from URL */
-  readonly hash?: string;
+  /** Chapter hash from /leer/{hash} URL segment */
+  readonly hash: string;
   /** Scanlation group name */
-  readonly scanlator?: string;
+  readonly scanlator: string;
   /** Chapter release date */
-  readonly date?: string;
+  readonly date: string;
 }
 
 /**
  * Options for getMangaDetail
  */
 export interface MangaDetailOptions {
-  /** Chapter order direction. Default: 'desc' (newest first) */
+  /** Chapter order direction. Default: 'asc' (oldest first) */
   readonly order?: ChapterOrder;
-  /** Whether to group chapter versions. Default: false */
+  /** Whether to group chapter versions. Default: true */
   readonly groupVersions?: boolean;
 }
 
@@ -135,8 +127,6 @@ export interface ChapterPage {
  * to get the required headers.
  */
 export interface ChapterPages {
-  /** Source chapter URL */
-  readonly url: string;
   /** Chapter hash from URL (for /leer/ URLs) */
   readonly chapterHash?: string;
   /** Total number of pages */
@@ -155,16 +145,14 @@ export interface ChapterPages {
 export interface Manga {
   /** Unique manga identifier (numeric) */
   id: number;
-  /** URL-friendly slug */
-  slug: string;
   /** Manga title */
   title: string;
   /** Manga type (Manga, Manhwa, Manhua, etc.) */
   type: MangaType;
   /** Cover image URL */
-  coverUrl: string;
+  coverUrl: string | null;
   /** Latest update date string */
-  latestUpdate: string;
+  latestUpdate: string | null;
   /** Rating from 1-5 stars */
   rating: number;
   /** Number of ratings received */
@@ -180,11 +168,11 @@ export interface Manga {
  */
 export interface MangaDetail extends Manga {
   /** Full manga description/ synopsis */
-  description: string;
+  description: string | null;
   /** Author name(s) */
-  author: string;
+  author: string | null;
   /** Artist name(s) */
-  artist: string;
+  artist: string | null;
   /** Publication status */
   status: string;
   /** Demographic categories */

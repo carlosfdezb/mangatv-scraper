@@ -24,44 +24,44 @@ import { SORT_ORDERS, CDN_HEADERS } from '../../src/constants/index.js';
 
 describe('Helpers', () => {
   describe('extractMangaFromUrl', () => {
-    it('should extract id and slug from full URL', () => {
+    it('should extract id from full URL', () => {
       const result = extractMangaFromUrl('https://mangatv.net/manga/36031/peque-o-hongo');
-      expect(result).toEqual({ id: 36031, slug: 'peque-o-hongo' });
+      expect(result).toEqual({ id: 36031 });
     });
 
     it('should extract from URL with query params', () => {
       const result = extractMangaFromUrl('https://mangatv.net/manga/35823/one-piece?ref=search');
-      expect(result).toEqual({ id: 35823, slug: 'one-piece' });
+      expect(result).toEqual({ id: 35823 });
     });
 
     it('should extract from relative path', () => {
       const result = extractMangaFromUrl('/manga/35287/solo-leveling');
-      expect(result).toEqual({ id: 35287, slug: 'solo-leveling' });
+      expect(result).toEqual({ id: 35287 });
     });
 
     it('should return null for invalid URL format', () => {
       expect(extractMangaFromUrl('https://mangatv.net/lista')).toBeNull();
     });
 
-    it('should extract id with empty slug for URL without slug', () => {
-      expect(extractMangaFromUrl('https://mangatv.net/manga/36031')).toEqual({ id: 36031, slug: '' });
+    it('should extract id for URL without slug', () => {
+      expect(extractMangaFromUrl('https://mangatv.net/manga/36031')).toEqual({ id: 36031 });
     });
 
     it('should return null for invalid id', () => {
-      expect(extractMangaFromUrl('https://mangatv.net/manga/abc/slug')).toBeNull();
+      expect(extractMangaFromUrl('https://mangatv.net/manga/abc')).toBeNull();
     });
 
     it('should return null for negative id', () => {
-      expect(extractMangaFromUrl('https://mangatv.net/manga/-1/slug')).toBeNull();
+      expect(extractMangaFromUrl('https://mangatv.net/manga/-1')).toBeNull();
     });
 
     it('should return null for zero id', () => {
-      expect(extractMangaFromUrl('https://mangatv.net/manga/0/slug')).toBeNull();
+      expect(extractMangaFromUrl('https://mangatv.net/manga/0')).toBeNull();
     });
 
     it('should handle URL with hash fragment', () => {
       const result = extractMangaFromUrl('https://mangatv.net/manga/12345/test-manga#section');
-      expect(result).toEqual({ id: 12345, slug: 'test-manga' });
+      expect(result).toEqual({ id: 12345 });
     });
   });
 
