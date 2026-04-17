@@ -5,6 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": ["dist"],
   "exports": {
     ".": {
       "import": {
@@ -22,10 +23,16 @@
     "dev": "tsx watch src/index.ts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
+    "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carlosfdezb/mangatv-scraper.git"
+  },
+  "author": "Carlos Fernández <carlosfdezb@gmail.com>",
   "keywords": ["manga", "scraper", "mangatv", "spanish", "manhwa", "manhua"],
   "license": "MIT",
   "engines": {
