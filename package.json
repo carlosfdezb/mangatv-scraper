@@ -1,11 +1,13 @@
 {
   "name": "mangatv-scraper",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "TypeScript scraper for MangaTV (mangatv.net) — manga reader site in Spanish",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "import": {
@@ -33,7 +35,14 @@
     "url": "git+https://github.com/carlosfdezb/mangatv-scraper.git"
   },
   "author": "Carlos Fernández <carlosfdezb@gmail.com>",
-  "keywords": ["manga", "scraper", "mangatv", "spanish", "manhwa", "manhua"],
+  "keywords": [
+    "manga",
+    "scraper",
+    "mangatv",
+    "spanish",
+    "manhwa",
+    "manhua"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
