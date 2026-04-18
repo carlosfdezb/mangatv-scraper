@@ -10,6 +10,7 @@ import type { ScraperConfig, RequestOptions, HttpResponse, RateLimiter } from '.
  */
 const DEFAULT_CONFIG: Required<ScraperConfig> = {
   baseUrl: 'https://mangatv.net',
+  proxyUrl: '',
   timeout: 30000,
   maxRetries: 3,
   retryDelay: 1000,
@@ -105,6 +106,24 @@ export class HttpClient {
   }
 
   /**
+   * Apply proxy URL transformation if configured
+   * Replaces the origin of the URL with proxyUrl while keeping the path
+   */
+  private getEffectiveUrl(url: string): string {
+    if (!this.config.proxyUrl) {
+      return url;
+    }
+
+    try {
+      const parsed = new URL(url);
+      return `${this.config.proxyUrl}${parsed.pathname}${parsed.search}`;
+    } catch {
+      // If URL parsing fails, return original
+      return url;
+    }
+  }
+
+  /**
    * Perform HTTP request with retry logic
    */
   async request<T = string>(
@@ -115,6 +134,9 @@ export class HttpClient {
     const maxRetries = options.retries ?? this.config.maxRetries;
     const headers = { ...this.baseHeaders, ...options.headers };
 
+    // Apply proxy transformation if configured
+    const effectiveUrl = this.getEffectiveUrl(url);
+
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -122,7 +144,7 @@ export class HttpClient {
         // Apply rate limiting
         await this.rateLimiter.wait();
 
-        const response = await this.performRequest<T>(url, timeout, headers);
+        const response = await this.performRequest<T>(effectiveUrl, timeout, headers);
         
         // Check for Cloudflare challenge
         if (this.isCloudflareChallenge({ body: response.data as string, status: response.status })) {

@@ -56,6 +56,7 @@ Supported config fields:
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `baseUrl` | `string` | `https://mangatv.net` | Override only if you know what you are doing |
+| `proxyUrl` | `string` | `''` | Proxy URL for bypassing Cloudflare protection (e.g., Cloudflare Worker). Replaces the origin in all requests when set. |
 | `timeout` | `number` | `30000` | Request timeout in ms |
 | `maxRetries` | `number` | `3` | Retries for retryable failures |
 | `retryDelay` | `number` | `1000` | Base retry delay in ms |
@@ -180,6 +181,60 @@ If you need more control than the main scraper class, the package also exports:
 
 These are useful when you already have your own fetch, cache, or persistence layer.
 
+## Cloudflare Proxy Support
+
+If you're deploying to a serverless environment (Vercel, Netlify, AWS Lambda, etc.), mangatv.net's Cloudflare protection may block requests from datacenter IPs. The `proxyUrl` option routes requests through a proxy that can bypass this protection.
+
+### Setup
+
+1. **Deploy a Cloudflare Worker** that proxies requests to mangatv.net
+2. **Set `proxyUrl`** in your scraper config:
+
+```ts
+import { MangaTVScraper } from 'mangatv-scraper';
+
+const scraper = new MangaTVScraper({
+  proxyUrl: process.env.MANGATV_PROXY_URL, // e.g., 'https://my-worker.workers.dev'
+});
+```
+
+When `proxyUrl` is set, all requests are sent to the proxy URL instead of mangatv.net directly. Paths and query parameters are preserved; only the origin is replaced.
+
+**Example:**
+
+- Without proxy: `https://mangatv.net/manga/36031`
+- With proxy: `https://my-worker.workers.dev/manga/36031`
+
+### Cloudflare Worker Example
+
+A minimal Cloudflare Worker that proxies to mangatv.net:
+
+```ts
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const upstream = new Request(`https://mangatv.net${url.pathname}${url.search}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+      },
+    });
+
+    const response = await fetch(upstream);
+    const headers = new Headers(response.headers);
+    headers.set('Access-Control-Allow-Origin', '*');
+    return new Response(response.body, { status: response.status, headers });
+  },
+};
+```
+
+### Notes
+
+- `proxyUrl` is optional; when not set, the scraper connects directly to mangatv.net
+- CDN image URLs are NOT affected by `proxyUrl`; they always point to `img*.mangatv.net`
+- The proxy only needs to handle HTML page requests, not images
+
 ## Chapter Image Proxy
 
 If you want to display chapter images in a browser, mobile WebView, or frontend app, you should proxy MangaTV CDN image requests through your own backend.
@@ -239,6 +294,7 @@ app.get('/api/mangatv/image', async (req, res) => {
 - `parseMangaListResult().totalItems` is estimated, not exact.
 - `author` and `artist` can be `null` when MangaTV does not render that data.
 - Built-in rate limiting is intentional to reduce blocking risk.
+- For serverless deployments, use `proxyUrl` to route through a Cloudflare Worker proxy.
 
 ## Compatibility
 

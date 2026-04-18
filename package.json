@@ -1,6 +1,6 @@
 {
   "name": "mangatv-scraper",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript scraper for MangaTV (mangatv.net) — manga reader site in Spanish",
   "type": "module",
   "main": "dist/index.js",

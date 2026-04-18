@@ -11,6 +11,8 @@ import type { MangaListFilters, Manga, MangaDetail, PaginatedResult } from './ma
 export interface ScraperConfig {
   /** Base URL of the site (default: https://mangatv.net) */
   baseUrl?: string;
+  /** Proxy URL to route requests through (e.g., a Cloudflare Worker) */
+  proxyUrl?: string;
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number;
   /** Maximum retry attempts for failed requests (default: 3) */
