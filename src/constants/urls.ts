@@ -22,6 +22,8 @@ export const IMAGE_CDN_SUBDOMAINS = [
   'img5.mangatv.net',
 ] as const;
 
+const CDN_PATTERN = /^img\d*\.mangatv\.net$/i;
+
 /**
  * Build a full URL from a path
  * @param path - The path (e.g., '/lista' or '/manga/123/slug')
@@ -63,9 +65,7 @@ export function isMangaTvUrl(url: string): boolean {
 export function isCdnUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return IMAGE_CDN_SUBDOMAINS.some(subdomain => 
-      parsed.hostname === subdomain || parsed.hostname.endsWith(`.${subdomain}`)
-    );
+    return CDN_PATTERN.test(parsed.hostname);
   } catch {
     return false;
   }

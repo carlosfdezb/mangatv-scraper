@@ -20,7 +20,7 @@ import {
   deduplicateByKey,
   getCdnImageHeaders,
 } from '../../src/utils/helpers.js';
-import { SORT_ORDERS, CDN_HEADERS } from '../../src/constants/index.js';
+import { SORT_ORDERS, CDN_HEADERS, isCdnUrl } from '../../src/constants/index.js';
 
 describe('Helpers', () => {
   describe('extractMangaFromUrl', () => {
@@ -406,6 +406,49 @@ describe('Helpers', () => {
       const headers1 = getCdnImageHeaders();
       const headers2 = getCdnImageHeaders();
       expect(headers1).toBe(headers2);
+    });
+  });
+
+  describe('isCdnUrl', () => {
+    it('should return true for img.mangatv.net', () => {
+      expect(isCdnUrl('https://img.mangatv.net/image.jpg')).toBe(true);
+    });
+
+    it('should return true for img2.mangatv.net', () => {
+      expect(isCdnUrl('https://img2.mangatv.net/image.jpg')).toBe(true);
+    });
+
+    it('should return true for img3.mangatv.net', () => {
+      expect(isCdnUrl('https://img3.mangatv.net/image.jpg')).toBe(true);
+    });
+
+    it('should return true for img4.mangatv.net', () => {
+      expect(isCdnUrl('https://img4.mangatv.net/image.jpg')).toBe(true);
+    });
+
+    it('should return true for img5.mangatv.net', () => {
+      expect(isCdnUrl('https://img5.mangatv.net/image.jpg')).toBe(true);
+    });
+
+    it('should return true for img0002.mangatv.net', () => {
+      expect(isCdnUrl('https://img0002.mangatv.net/image.jpg')).toBe(true);
+    });
+
+    it('should return true for img0001.mangatv.net', () => {
+      expect(isCdnUrl('https://img0001.mangatv.net/image.jpg')).toBe(true);
+    });
+
+    it('should return false for random domain', () => {
+      expect(isCdnUrl('https://random.com/image.jpg')).toBe(false);
+    });
+
+    it('should return false for non-mangatv img domain', () => {
+      expect(isCdnUrl('https://img.other.com/image.jpg')).toBe(false);
+    });
+
+    it('should handle case insensitivity', () => {
+      expect(isCdnUrl('https://IMG.Mangatv.Net/image.jpg')).toBe(true);
+      expect(isCdnUrl('https://IMG2.mangatv.net/image.jpg')).toBe(true);
     });
   });
 
